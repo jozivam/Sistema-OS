@@ -1,0 +1,8 @@
+{
+  "name": "Copy of SISTEMA OS 3.1",
+  "description": "Uma plataforma intuitiva para técnicos e pequenas empresas gerenciarem ordens de serviço com relatórios profissionais gerados por IA.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
