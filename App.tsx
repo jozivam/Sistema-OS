@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { supabase } from "./services/supabaseClient";
-
-// Verifica a conexão com o Supabase (Log removido para segurança visual)
-// console.log("Supabase Client Initialized");
 import { storageService } from './services/storageService';
-import { User, UserRole } from './types';
+import { dbService } from './services/dbService';
+import { supabase } from './services/supabaseClient';
+import { User, UserRole, Company } from './types';
 
 // Components
 import Layout from './components/Layout';
@@ -31,11 +29,27 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const data = storageService.getData();
-    if (data.currentUser) {
-      setCurrentUser(data.currentUser);
-    }
-    setLoading(false);
+    const initApp = async () => {
+      const data = storageService.getData();
+      if (data.currentUser) {
+        setCurrentUser(data.currentUser);
+
+        // Tentar buscar empresas atualizadas do Supabase
+        try {
+          const supabaseCompanies = await dbService.getCompanies();
+          if (supabaseCompanies.length > 0) {
+            const updatedData = { ...data, companies: supabaseCompanies };
+            storageService.saveData(updatedData);
+            // Isso garantirá que o resto do sistema use os dados do banco
+          }
+        } catch (err) {
+          console.warn('Supabase não disponível ainda ou erro de conexão:', err);
+        }
+      }
+      setLoading(false);
+    };
+
+    initApp();
   }, []);
 
   const handleUserChange = (user: User | null) => {
