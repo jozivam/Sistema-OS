@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { storageService } from '../services/storageService';
 import { Company, CompanyPlan, AppState, User, UserRole } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
+import { maskDocument, maskPhone } from '../utils/format';
 
 const DeveloperPanel: React.FC = () => {
   const [data, setData] = useState<AppState>(storageService.getData());
@@ -13,8 +14,8 @@ const DeveloperPanel: React.FC = () => {
   const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
   const [isInsertModalOpen, setInsertModalOpen] = useState(false);
   const [showAllCompanies, setShowAllCompanies] = useState(false);
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
-  
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -27,9 +28,28 @@ const DeveloperPanel: React.FC = () => {
     address: '',
     city: '',
     plan: CompanyPlan.MENSAL,
-    monthlyFee: '',
-    createdAt: new Date().toISOString().split('T')[0]
+    monthlyFee: 0,
+    status: 'ACTIVE' as 'ACTIVE' | 'BLOCKED',
+    createdAt: new Date().toISOString().split('T')[0],
+    expiresAt: '',
+    settings: {
+      enableAI: false,
+      enableAttachments: false,
+      enableChat: false,
+      enableHistory: false,
+    }
   });
+
+  // Cálculo automático de vencimento ao abrir modal ou mudar plano/data
+  useEffect(() => {
+    if (isInsertModalOpen) {
+      const expiry = calculateExpirationDate(newCompanyData.plan, newCompanyData.createdAt);
+      setNewCompanyData(prev => ({
+        ...prev,
+        expiresAt: expiry ? expiry.split('T')[0] : ''
+      }));
+    }
+  }, [newCompanyData.plan, newCompanyData.createdAt, isInsertModalOpen]);
 
   // Fecha o menu ao clicar fora
   useEffect(() => {
@@ -66,11 +86,11 @@ const DeveloperPanel: React.FC = () => {
   const filteredCompanies = useMemo(() => {
     return clientCompanies.filter(c => {
       const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
-      const matchesSearch = !searchTerm || 
-        (c.tradeName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+      const matchesSearch = !searchTerm ||
+        (c.tradeName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (c.corporateName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (c.document || '').includes(searchTerm);
-      
+
       return matchesStatus && matchesSearch;
     });
   }, [clientCompanies, filterStatus, searchTerm]);
@@ -79,26 +99,26 @@ const DeveloperPanel: React.FC = () => {
   const visibleCompanies = showAllCompanies ? filteredCompanies : filteredCompanies.slice(0, 5);
 
   const updateCompanyStatus = (id: string, status: 'ACTIVE' | 'BLOCKED') => {
-    const updatedCompanies = data.companies.map(c => 
+    const updatedCompanies = data.companies.map(c =>
       c.id === id ? { ...c, status } as Company : c
     );
     const updatedData = { ...data, companies: updatedCompanies };
     storageService.saveData(updatedData);
     setData(updatedData);
     setOpenMenuId(null);
-    setToast({ 
-      message: status === 'ACTIVE' ? 'Empresa liberada com sucesso!' : 'Empresa bloqueada com sucesso!', 
-      type: 'success' 
+    setToast({
+      message: status === 'ACTIVE' ? 'Empresa liberada com sucesso!' : 'Empresa bloqueada com sucesso!',
+      type: 'success'
     });
   };
 
   const calculateExpirationDate = (plan: CompanyPlan, baseDateStr: string): string | undefined => {
     if (plan === CompanyPlan.LIVRE) return undefined;
-    
+
     const date = new Date(baseDateStr + 'T12:00:00');
     let monthsToAdd = 1;
 
-    switch(plan) {
+    switch (plan) {
       case CompanyPlan.MENSAL: monthsToAdd = 1; break;
       case CompanyPlan.TRIMESTRAL: monthsToAdd = 3; break;
       case CompanyPlan.ANUAL: monthsToAdd = 12; break;
@@ -128,15 +148,12 @@ const DeveloperPanel: React.FC = () => {
       address: newCompanyData.address,
       city: newCompanyData.city,
       plan: newCompanyData.plan,
-      monthlyFee: parseFloat(newCompanyData.monthlyFee) || 0,
-      status: 'ACTIVE',
+      monthlyFee: newCompanyData.monthlyFee,
+      status: newCompanyData.status,
       createdAt: new Date(newCompanyData.createdAt + 'T12:00:00').toISOString(),
-      expiresAt: expiresAt,
+      expiresAt: newCompanyData.expiresAt ? new Date(newCompanyData.expiresAt + 'T12:00:00').toISOString() : undefined,
       settings: {
-        enableAI: false,
-        enableAttachments: false,
-        enableChat: false,
-        enableHistory: false,
+        ...newCompanyData.settings,
         orderTypes: data.settings.orderTypes
       }
     };
@@ -150,14 +167,14 @@ const DeveloperPanel: React.FC = () => {
 
   const deleteCompany = () => {
     if (!companyToDelete) return;
-    
+
     const updatedCompanies = data.companies.filter(c => c.id !== companyToDelete.id);
     const updatedUsers = data.users.filter(u => u.companyId !== companyToDelete.id);
     const updatedCustomers = data.customers.filter(cust => cust.companyId !== companyToDelete.id);
     const updatedOrders = data.orders.filter(o => o.companyId !== companyToDelete.id);
-    
-    const updatedData = { 
-      ...data, 
+
+    const updatedData = {
+      ...data,
       companies: updatedCompanies,
       users: updatedUsers,
       customers: updatedCustomers,
@@ -172,7 +189,7 @@ const DeveloperPanel: React.FC = () => {
   };
 
   const getPlanBadge = (plan: CompanyPlan) => {
-    switch(plan) {
+    switch (plan) {
       case CompanyPlan.TESTE: return 'bg-orange-100 text-orange-600';
       case CompanyPlan.LIVRE: return 'bg-emerald-100 text-emerald-600';
       case CompanyPlan.ANUAL: return 'bg-purple-100 text-purple-600';
@@ -189,15 +206,14 @@ const DeveloperPanel: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {toast && (
-        <div className={`fixed top-6 right-6 z-[100] px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl flex items-center gap-2 border ${
-          toast.type === 'success' ? 'bg-slate-900 text-white border-green-500' : 'bg-red-600 text-white border-red-400'
-        }`}>
+        <div className={`fixed top-6 right-6 z-[100] px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl flex items-center gap-2 border ${toast.type === 'success' ? 'bg-slate-900 text-white border-green-500' : 'bg-red-600 text-white border-red-400'
+          }`}>
           <i className={`fa-solid ${toast.type === 'success' ? 'fa-circle-check text-green-500' : 'fa-circle-exclamation'}`}></i>
           {toast.message}
         </div>
       )}
 
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={!!companyToDelete}
         title="Excluir Empresa"
         message={`Tem certeza que deseja excluir permanentemente a empresa "${companyToDelete?.tradeName || companyToDelete?.name}"? Esta ação removerá todos os usuários, clientes e ordens vinculadas e NÃO poderá ser desfeita.`}
@@ -262,17 +278,17 @@ const DeveloperPanel: React.FC = () => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-300 relative">
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50 rounded-t-2xl">
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => setInsertModalOpen(true)}
               className="bg-blue-600 text-white border border-blue-600 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 active:scale-95 flex items-center gap-1 shrink-0"
             >
               <i className="fa-solid fa-plus"></i> Inserir Empresa
             </button>
-            
+
             <div className="relative w-full md:w-64 lg:w-80">
               <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]"></i>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="BUSCAR EMPRESA OU CNPJ..."
                 className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
                 value={searchTerm}
@@ -280,20 +296,20 @@ const DeveloperPanel: React.FC = () => {
               />
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
-             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-               <i className="fa-solid fa-filter"></i> Filtrar por
-             </span>
-             <select 
-               className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500"
-               value={filterStatus}
-               onChange={(e) => setFilterStatus(e.target.value)}
-             >
-               <option value="all">Status</option>
-               <option value="ACTIVE">Ativas</option>
-               <option value="BLOCKED">Bloqueadas</option>
-             </select>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <i className="fa-solid fa-filter"></i> Filtrar por
+            </span>
+            <select
+              className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="all">Status</option>
+              <option value="ACTIVE">Ativas</option>
+              <option value="BLOCKED">Bloqueadas</option>
+            </select>
           </div>
         </div>
 
@@ -346,7 +362,7 @@ const DeveloperPanel: React.FC = () => {
                   </td>
                   <td className="px-8 py-5 text-right relative" style={{ overflow: 'visible' }}>
                     <div className="inline-block text-left relative">
-                      <button 
+                      <button
                         onClick={(e) => toggleMenu(e, company.id)}
                         className="bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-2"
                       >
@@ -354,36 +370,36 @@ const DeveloperPanel: React.FC = () => {
                       </button>
 
                       {openMenuId === company.id && (
-                        <div 
+                        <div
                           ref={menuRef}
                           className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-xl shadow-2xl z-[150] py-2 animate-in fade-in slide-in-from-top-2 duration-200"
                         >
-                          <Link 
+                          <Link
                             to={`/developer/empresa/${company.id}`}
                             className="w-full text-left px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 hover:bg-blue-50 flex items-center gap-3 transition-colors"
                           >
                             <i className="fa-solid fa-screwdriver-wrench w-4 text-slate-400"></i> Gerenciar
                           </Link>
-                          
+
                           {company.status === 'ACTIVE' ? (
-                            <button 
+                            <button
                               onClick={() => updateCompanyStatus(company.id, 'BLOCKED')}
                               className="w-full text-left px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.1em] text-orange-600 hover:bg-orange-50 flex items-center gap-3 transition-colors"
                             >
                               <i className="fa-solid fa-lock w-4"></i> Bloquear Sistema
                             </button>
                           ) : (
-                            <button 
+                            <button
                               onClick={() => updateCompanyStatus(company.id, 'ACTIVE')}
                               className="w-full text-left px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.1em] text-green-600 hover:bg-green-50 flex items-center gap-3 transition-colors"
                             >
                               <i className="fa-solid fa-lock-open w-4"></i> Liberar Sistema
                             </button>
                           )}
-                          
+
                           <div className="h-px bg-slate-100 my-1"></div>
-                          
-                          <button 
+
+                          <button
                             onClick={() => {
                               setCompanyToDelete(company);
                               setOpenMenuId(null);
@@ -398,7 +414,7 @@ const DeveloperPanel: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              
+
               {/* Espaçador invisível para garantir que o menu da última linha não seja cortado */}
               {visibleCompanies.length > 0 && <tr style={{ height: openMenuId ? '160px' : '20px' }}></tr>}
 
@@ -418,7 +434,7 @@ const DeveloperPanel: React.FC = () => {
 
         {filteredCompanies.length > 5 && (
           <div className="p-6 bg-slate-50/30 border-t border-slate-100 rounded-b-2xl">
-            <button 
+            <button
               onClick={() => setShowAllCompanies(!showAllCompanies)}
               className="w-full py-5 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-white transition-all font-black text-[10px] uppercase tracking-widest"
             >
@@ -437,33 +453,137 @@ const DeveloperPanel: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-300">
             <div className="p-8 border-b flex justify-between items-center bg-slate-50">
-               <div className="flex flex-col">
-                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-tighter">
-                    Nova Empresa Cliente
-                  </h3>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Cadastro de nova unidade de negócio</p>
-               </div>
-               <button onClick={() => setInsertModalOpen(false)} className="text-slate-400 hover:text-slate-900 transition-all"><i className="fa-solid fa-xmark text-xl"></i></button>
+              <div className="flex flex-col">
+                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tighter">
+                  Nova Empresa Cliente
+                </h3>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Cadastro de nova unidade de negócio</p>
+              </div>
+              <button onClick={() => setInsertModalOpen(false)} className="text-slate-400 hover:text-slate-900 transition-all"><i className="fa-solid fa-xmark text-xl"></i></button>
             </div>
-            <form onSubmit={handleInsertCompany} className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleInsertCompany} className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              {/* Sessão: Identificação */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-l-4 border-blue-500 pl-3">Dados Principais</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Razão Social</label>
-                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.corporateName} onChange={e => setNewCompanyData({...newCompanyData, corporateName: e.target.value})} />
+                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.corporateName} onChange={e => setNewCompanyData({ ...newCompanyData, corporateName: e.target.value })} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Nome Fantasia</label>
-                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.tradeName} onChange={e => setNewCompanyData({...newCompanyData, tradeName: e.target.value})} />
+                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.tradeName} onChange={e => setNewCompanyData({ ...newCompanyData, tradeName: e.target.value })} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">CNPJ</label>
-                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm" value={newCompanyData.document} onChange={e => setNewCompanyData({...newCompanyData, document: e.target.value})} />
+                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm" value={newCompanyData.document} onChange={e => setNewCompanyData({ ...newCompanyData, document: maskDocument(e.target.value) })} />
                   </div>
-               </div>
-               <div className="pt-6 flex gap-3 sticky bottom-0 bg-white pb-2">
-                 <button type="button" onClick={() => setInsertModalOpen(false)} className="flex-1 py-4 border border-slate-200 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all">Cancelar</button>
-                 <button type="submit" className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-blue-500/20 active:scale-95 transition-all">Cadastrar Empresa</button>
-               </div>
+                </div>
+              </div>
+
+              {/* Sessão: Contato e Localização */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-l-4 border-blue-500 pl-3">Contato e Localização</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">E-mail Administrativo</label>
+                    <input type="email" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm lowercase" value={newCompanyData.email} onChange={e => setNewCompanyData({ ...newCompanyData, email: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Telefone / WhatsApp</label>
+                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.phone} onChange={e => setNewCompanyData({ ...newCompanyData, phone: maskPhone(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Endereço Fiscal</label>
+                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm" value={newCompanyData.address} onChange={e => setNewCompanyData({ ...newCompanyData, address: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Cidade / UF</label>
+                    <input type="text" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm" value={newCompanyData.city} onChange={e => setNewCompanyData({ ...newCompanyData, city: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sessão: Financeiro */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-l-4 border-blue-500 pl-3">Sistema e Financeiro</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Data de Registro</label>
+                    <input type="date" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.createdAt} onChange={e => setNewCompanyData({ ...newCompanyData, createdAt: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Plano</label>
+                    <select className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-black uppercase text-[10px]" value={newCompanyData.plan} onChange={e => setNewCompanyData({ ...newCompanyData, plan: e.target.value as CompanyPlan })}>
+                      <option value={CompanyPlan.MENSAL}>MENSAL</option>
+                      <option value={CompanyPlan.TRIMESTRAL}>TRIMESTRAL</option>
+                      <option value={CompanyPlan.ANUAL}>ANUAL</option>
+                      <option value={CompanyPlan.TESTE}>TESTE</option>
+                      <option value={CompanyPlan.LIVRE}>LIVRE</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Mensalidade (R$)</label>
+                    <input type="number" step="0.01" required className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.monthlyFee} onChange={e => setNewCompanyData({ ...newCompanyData, monthlyFee: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Data de Vencimento</label>
+                    <input type="date" disabled={newCompanyData.plan === CompanyPlan.LIVRE} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm" value={newCompanyData.expiresAt} onChange={e => setNewCompanyData({ ...newCompanyData, expiresAt: e.target.value })} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Status de Acesso</label>
+                    <select className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-black uppercase text-[10px]" value={newCompanyData.status} onChange={e => setNewCompanyData({ ...newCompanyData, status: e.target.value as 'ACTIVE' | 'BLOCKED' })}>
+                      <option value="ACTIVE">ATIVO (LIBERADO)</option>
+                      <option value="BLOCKED">BLOQUEADO (SUSPENSO)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sessão: Módulos */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 border-l-4 border-blue-500 pl-3">
+                  <i className="fa-solid fa-cubes text-blue-600 text-[10px]"></i>
+                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Módulos da Unidade</h4>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {[
+                    { id: 'enableAI', label: 'Relatórios', icon: 'fa-chart-pie' },
+                    { id: 'enableChat', label: 'Central Chat', icon: 'fa-comments' },
+                    { id: 'enableAttachments', label: 'Arquivos/Mídia', icon: 'fa-paperclip' },
+                    { id: 'enableHistory', label: 'Timeline/History', icon: 'fa-clock-rotate-left' }
+                  ].map((mod) => (
+                    <div key={mod.id} className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-white rounded-lg border border-slate-100 flex items-center justify-center text-slate-400">
+                          <i className={`fa-solid ${mod.icon} text-sm`}></i>
+                        </div>
+                        <span className="text-[10px] font-black uppercase text-slate-600 tracking-tight">{mod.label}</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={newCompanyData.settings[mod.id as keyof typeof newCompanyData.settings]}
+                          onChange={() => setNewCompanyData({
+                            ...newCompanyData,
+                            settings: {
+                              ...newCompanyData.settings,
+                              [mod.id]: !newCompanyData.settings[mod.id as keyof typeof newCompanyData.settings]
+                            }
+                          })}
+                        />
+                        <div className="w-10 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-6 flex gap-3 sticky bottom-0 bg-white pb-2">
+                <button type="button" onClick={() => setInsertModalOpen(false)} className="flex-1 py-4 border border-slate-200 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all">Cancelar</button>
+                <button type="submit" className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-blue-500/20 active:scale-95 transition-all">Cadastrar Empresa</button>
+              </div>
             </form>
           </div>
         </div>

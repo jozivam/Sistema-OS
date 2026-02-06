@@ -5,6 +5,7 @@ import { storageService } from '../services/storageService';
 import { dbService } from '../services/dbService';
 import { Company, User, UserRole, AppState, CompanyPlan, CompanyPayment, SystemSettings } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
+import { maskDocument, maskPhone } from '../utils/format';
 
 const CompanyManagement: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -679,7 +680,7 @@ const CompanyManagement: React.FC = () => {
                       type="text" required
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                       value={companyFormData.document}
-                      onChange={e => setCompanyFormData({ ...companyFormData, document: e.target.value })}
+                      onChange={e => setCompanyFormData({ ...companyFormData, document: maskDocument(e.target.value) })}
                     />
                   </div>
                 </div>
@@ -704,7 +705,7 @@ const CompanyManagement: React.FC = () => {
                       type="text" required
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm"
                       value={companyFormData.phone}
-                      onChange={e => setCompanyFormData({ ...companyFormData, phone: e.target.value })}
+                      onChange={e => setCompanyFormData({ ...companyFormData, phone: maskPhone(e.target.value) })}
                     />
                   </div>
                   <div>
