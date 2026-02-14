@@ -1,13 +1,16 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { storageService } from '../services/storageService';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
 import { Company, CompanyPlan, AppState, User, UserRole } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
 import { maskDocument, maskPhone } from '../utils/format';
 
 const DeveloperPanel: React.FC = () => {
-  const [data, setData] = useState<AppState>(storageService.getData());
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -40,6 +43,25 @@ const DeveloperPanel: React.FC = () => {
     }
   });
 
+  const loadData = async () => {
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      setCurrentUser(user);
+
+      const companiesData = await dbService.getCompanies();
+      setCompanies(companiesData);
+    } catch (error) {
+      console.error("Erro ao carregar dados do painel:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
   // Cálculo automático de vencimento ao abrir modal ou mudar plano/data
   useEffect(() => {
     if (isInsertModalOpen) {
@@ -71,8 +93,8 @@ const DeveloperPanel: React.FC = () => {
 
   // Filtrar para remover a empresa do desenvolvedor das métricas e listagem
   const clientCompanies = useMemo(() => {
-    return data.companies.filter(c => c.id !== 'dev-corp');
-  }, [data.companies]);
+    return companies.filter(c => c.id !== 'dev-corp');
+  }, [companies]);
 
   const stats = useMemo(() => {
     const total = clientCompanies.length;
@@ -98,18 +120,21 @@ const DeveloperPanel: React.FC = () => {
   // Aplica o limite de 5 itens caso não esteja expandido
   const visibleCompanies = showAllCompanies ? filteredCompanies : filteredCompanies.slice(0, 5);
 
-  const updateCompanyStatus = (id: string, status: 'ACTIVE' | 'BLOCKED') => {
-    const updatedCompanies = data.companies.map(c =>
-      c.id === id ? { ...c, status } as Company : c
-    );
-    const updatedData = { ...data, companies: updatedCompanies };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setOpenMenuId(null);
-    setToast({
-      message: status === 'ACTIVE' ? 'Empresa liberada com sucesso!' : 'Empresa bloqueada com sucesso!',
-      type: 'success'
-    });
+  const updateCompanyStatus = async (id: string, status: 'ACTIVE' | 'BLOCKED') => {
+    try {
+      await dbService.updateCompany(id, { status } as Partial<Company>);
+      setCompanies(prev => prev.map(c =>
+        c.id === id ? { ...c, status } as Company : c
+      ));
+      setOpenMenuId(null);
+      setToast({
+        message: status === 'ACTIVE' ? 'Empresa liberada com sucesso!' : 'Empresa bloqueada com sucesso!',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar status da empresa:", error);
+      setToast({ message: 'Erro ao atualizar status da empresa.', type: 'error' });
+    }
   };
 
   const calculateExpirationDate = (plan: CompanyPlan, baseDateStr: string): string | undefined => {
@@ -129,63 +154,56 @@ const DeveloperPanel: React.FC = () => {
     return date.toISOString();
   };
 
-  const handleInsertCompany = (e: React.FormEvent) => {
+  const handleInsertCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompanyData.tradeName || !newCompanyData.document || !newCompanyData.corporateName) {
       setToast({ message: 'Preencha os campos obrigatórios.', type: 'error' });
       return;
     }
 
-    const expiresAt = calculateExpirationDate(newCompanyData.plan, newCompanyData.createdAt);
-    const newCompany: Company = {
-      id: `comp-${Date.now()}`,
-      name: newCompanyData.tradeName,
-      tradeName: newCompanyData.tradeName,
-      corporateName: newCompanyData.corporateName,
-      document: newCompanyData.document,
-      email: newCompanyData.email,
-      phone: newCompanyData.phone,
-      address: newCompanyData.address,
-      city: newCompanyData.city,
-      plan: newCompanyData.plan,
-      monthlyFee: newCompanyData.monthlyFee,
-      status: newCompanyData.status,
-      createdAt: new Date(newCompanyData.createdAt + 'T12:00:00').toISOString(),
-      expiresAt: newCompanyData.expiresAt ? new Date(newCompanyData.expiresAt + 'T12:00:00').toISOString() : undefined,
-      settings: {
-        ...newCompanyData.settings,
-        orderTypes: data.settings.orderTypes
-      }
-    };
+    try {
+      const expiresAt = calculateExpirationDate(newCompanyData.plan, newCompanyData.createdAt);
+      const newCompany = await dbService.createCompany({
+        name: newCompanyData.tradeName,
+        tradeName: newCompanyData.tradeName,
+        corporateName: newCompanyData.corporateName,
+        document: newCompanyData.document,
+        email: newCompanyData.email,
+        phone: newCompanyData.phone,
+        address: newCompanyData.address,
+        city: newCompanyData.city,
+        plan: newCompanyData.plan,
+        monthlyFee: newCompanyData.monthlyFee,
+        status: newCompanyData.status,
+        expiresAt: expiresAt ? new Date(expiresAt + 'T12:00:00').toISOString() : undefined,
+        settings: {
+          ...newCompanyData.settings,
+          orderTypes: [] // Default or from somewhere else if needed
+        }
+      });
 
-    const updatedData = { ...data, companies: [...data.companies, newCompany] };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setInsertModalOpen(false);
-    setToast({ message: 'Empresa cadastrada com sucesso!', type: 'success' });
+      setCompanies(prev => [...prev, newCompany]);
+      setInsertModalOpen(false);
+      setToast({ message: 'Empresa cadastrada com sucesso!', type: 'success' });
+    } catch (error) {
+      console.error("Erro ao inserir empresa:", error);
+      setToast({ message: 'Erro ao cadastrar empresa.', type: 'error' });
+    }
   };
 
-  const deleteCompany = () => {
+  const deleteCompany = async () => {
     if (!companyToDelete) return;
 
-    const updatedCompanies = data.companies.filter(c => c.id !== companyToDelete.id);
-    const updatedUsers = data.users.filter(u => u.companyId !== companyToDelete.id);
-    const updatedCustomers = data.customers.filter(cust => cust.companyId !== companyToDelete.id);
-    const updatedOrders = data.orders.filter(o => o.companyId !== companyToDelete.id);
-
-    const updatedData = {
-      ...data,
-      companies: updatedCompanies,
-      users: updatedUsers,
-      customers: updatedCustomers,
-      orders: updatedOrders
-    };
-
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setCompanyToDelete(null);
-    setOpenMenuId(null);
-    setToast({ message: 'Empresa e todos os seus dados removidos!', type: 'success' });
+    try {
+      await dbService.deleteCompany(companyToDelete.id);
+      setCompanies(prev => prev.filter(c => c.id !== companyToDelete.id));
+      setCompanyToDelete(null);
+      setOpenMenuId(null);
+      setToast({ message: 'Empresa e todos os seus dados removidos!', type: 'success' });
+    } catch (error) {
+      console.error("Erro ao excluir empresa:", error);
+      setToast({ message: 'Erro ao excluir empresa.', type: 'error' });
+    }
   };
 
   const getPlanBadge = (plan: CompanyPlan) => {
@@ -202,6 +220,14 @@ const DeveloperPanel: React.FC = () => {
     e.stopPropagation();
     setOpenMenuId(openMenuId === id ? null : id);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">

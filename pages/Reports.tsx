@@ -1,13 +1,18 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { storageService } from '../services/storageService';
-import { OrderStatus, UserRole, ServiceOrder, AppState } from '../types';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { OrderStatus, UserRole, ServiceOrder, User, Company } from '../types';
 
 const Reports: React.FC = () => {
-  const [data] = useState<AppState>(storageService.getData());
+  const [users, setUsers] = useState<User[]>([]);
+  const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showAllDetails, setShowAllDetails] = useState(false);
-  
+
   const now = new Date();
   const currentYear = now.getFullYear();
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -19,19 +24,33 @@ const Reports: React.FC = () => {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
 
-  const isAdmin = data.currentUser?.role === UserRole.ADMIN;
+  const loadData = async () => {
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      setCurrentUser(user);
 
-  if (!isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-10">
-        <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 shadow-sm">
-          <i className="fa-solid fa-lock text-3xl"></i>
-        </div>
-        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Acesso Restrito</h2>
-        <Link to="/dashboard" className="mt-8 bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/20">Voltar para Home</Link>
-      </div>
-    );
-  }
+      const [usersData, ordersData, companyData] = await Promise.all([
+        dbService.getUsers(user.companyId),
+        dbService.getOrders(user.companyId),
+        dbService.getCompany(user.companyId)
+      ]);
+
+      setUsers(usersData);
+      setOrders(ordersData);
+      setCompany(companyData);
+    } catch (error) {
+      console.error("Erro ao carregar dados para relatórios:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.DEVELOPER;
 
   const stats = useMemo(() => {
     const filterBase = (o: ServiceOrder) => {
@@ -41,20 +60,20 @@ const Reports: React.FC = () => {
     };
 
     // Filtro para ordens finalizadas no período selecionado
-    const finishedInPeriod = data.orders.filter(o => {
+    const finishedInPeriod = orders.filter(o => {
       if (!o.finishedAt) return false;
       const fDateStr = o.finishedAt.split('T')[0];
       return filterBase(o) && fDateStr >= startDate && fDateStr <= endDate;
     });
 
     // Cálculo de Pendentes
-    const totalPending = data.orders.filter(o => {
+    const totalPending = orders.filter(o => {
       const isPending = o.status === OrderStatus.OPEN || o.status === OrderStatus.IN_PROGRESS || o.status === OrderStatus.PAUSED;
       return isPending && filterBase(o);
     }).length;
 
     // Cálculo de Ordens em Atraso
-    const totalOverdue = data.orders.filter(o => {
+    const totalOverdue = orders.filter(o => {
       const isPending = o.status !== OrderStatus.FINISHED && o.status !== OrderStatus.CANCELLED;
       if (!isPending || !o.scheduledDate) return false;
       const sDate = new Date(o.scheduledDate);
@@ -64,7 +83,7 @@ const Reports: React.FC = () => {
     const totalFinished = finishedInPeriod.length;
 
     const yearToUse = parseInt(selectedYear);
-    const totalFinishedYear = data.orders.filter(o => {
+    const totalFinishedYear = orders.filter(o => {
       if (!o.finishedAt) return false;
       const fYear = new Date(o.finishedAt).getFullYear();
       return filterBase(o) && fYear === yearToUse;
@@ -79,7 +98,7 @@ const Reports: React.FC = () => {
 
     const monthsNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const monthlyData = monthsNames.map((month, index) => {
-      const count = data.orders.filter(o => {
+      const count = orders.filter(o => {
         if (!o.finishedAt) return false;
         const fDate = new Date(o.finishedAt);
         return filterBase(o) && fDate.getMonth() === index && fDate.getFullYear() === yearToUse;
@@ -100,7 +119,27 @@ const Reports: React.FC = () => {
       maxMonthlyVal,
       finishedOrders: finishedInPeriod.sort((a, b) => (b.finishedAt || '').localeCompare(a.finishedAt || ''))
     };
-  }, [startDate, endDate, selectedTechId, selectedType, selectedYear, data.orders]);
+  }, [startDate, endDate, selectedTechId, selectedType, selectedYear, orders]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-10">
+        <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 shadow-sm">
+          <i className="fa-solid fa-lock text-3xl"></i>
+        </div>
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Acesso Restrito</h2>
+        <Link to="/dashboard" className="mt-8 bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/20">Voltar para Home</Link>
+      </div>
+    );
+  }
 
   const visibleFinishedOrders = showAllDetails ? stats.finishedOrders : stats.finishedOrders.slice(0, 5);
 
@@ -111,7 +150,7 @@ const Reports: React.FC = () => {
 
   return (
     <div className="space-y-8 pb-20 animate-in fade-in duration-700 max-w-[1600px] mx-auto">
-      
+
       {/* HEADER & FILTERS */}
       <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-6 px-2">
         {/* Título com a moldura azul solicitada no screenshot */}
@@ -124,13 +163,13 @@ const Reports: React.FC = () => {
           {/* Filtro Técnico */}
           <div className="relative group w-full lg:w-48 xl:w-56">
             <i className="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-blue-500"></i>
-            <select 
+            <select
               className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500 shadow-sm appearance-none cursor-pointer"
               value={selectedTechId}
               onChange={(e) => setSelectedTechId(e.target.value)}
             >
               <option value="all">Equipe Consolidada</option>
-              {data.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
             <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[8px]"></i>
           </div>
@@ -138,13 +177,13 @@ const Reports: React.FC = () => {
           {/* Filtro Natureza do Serviço */}
           <div className="relative group w-full lg:w-48 xl:w-56">
             <i className="fa-solid fa-tags absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500"></i>
-            <select 
+            <select
               className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500 shadow-sm appearance-none cursor-pointer"
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
             >
               <option value="all">Todas Naturezas</option>
-              {data.settings.orderTypes.map(t => <option key={t} value={t}>{t}</option>)}
+              {(company?.settings.orderTypes || []).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[8px]"></i>
           </div>
@@ -161,11 +200,11 @@ const Reports: React.FC = () => {
                 <input type="date" className="bg-transparent border-none outline-none text-[10px] font-black text-slate-700" value={endDate} onChange={e => setEndDate(e.target.value)} />
               </div>
             </div>
-            
+
             {/* Seletor de Ano (Abaixo do Período) */}
             <div className="relative group w-full">
               <i className="fa-solid fa-calendar-days absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-              <select 
+              <select
                 className="w-full pl-11 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500 shadow-sm appearance-none cursor-pointer"
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
@@ -206,14 +245,14 @@ const Reports: React.FC = () => {
           <h2 className="text-xl font-black text-slate-900 mb-10 flex items-center gap-3 uppercase tracking-tighter">
             <i className="fa-solid fa-chart-bar text-blue-600"></i> PRODUÇÃO MENSAL ({selectedYear})
           </h2>
-          
+
           <div className="relative h-72 flex flex-col justify-between px-4">
             <div className="absolute inset-0 top-2 bottom-12 flex flex-col justify-between pointer-events-none px-4">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="w-full border-t border-slate-100 relative">
-                   <span className="absolute -left-8 -top-2 text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                     {Math.round((stats.maxMonthlyVal / 4) * (4 - i))}
-                   </span>
+                  <span className="absolute -left-8 -top-2 text-[8px] font-black text-slate-300 uppercase tracking-widest">
+                    {Math.round((stats.maxMonthlyVal / 4) * (4 - i))}
+                  </span>
                 </div>
               ))}
             </div>
@@ -222,7 +261,7 @@ const Reports: React.FC = () => {
               {stats.lineChartData.map(([month, value]) => (
                 <div key={month} className="flex-1 flex flex-col items-center h-full group relative">
                   <div className="relative w-full h-full flex flex-col justify-end bg-slate-50/50 rounded-t-xl">
-                    <div 
+                    <div
                       className="w-full bg-blue-600 rounded-t-xl transition-all duration-700 group-hover:bg-blue-500 shadow-xl shadow-blue-500/10 relative"
                       style={{ height: `${(value / stats.maxMonthlyVal) * 100}%` }}
                     >
@@ -252,7 +291,7 @@ const Reports: React.FC = () => {
                   <span className="text-slate-900">{count} OS</span>
                 </div>
                 <div className="h-3 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                  <div 
+                  <div
                     className="h-full bg-indigo-500 rounded-full shadow-sm"
                     style={{ width: `${(count / stats.totalNature) * 100}%` }}
                   ></div>
@@ -266,9 +305,9 @@ const Reports: React.FC = () => {
       {/* OS Details Table */}
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-8 border-b border-slate-50">
-           <h2 className="text-xl font-black text-slate-900 flex items-center gap-3 uppercase tracking-tighter">
-              <i className="fa-solid fa-list-check text-emerald-600"></i> DETALHAMENTO DE CONCLUSÕES
-           </h2>
+          <h2 className="text-xl font-black text-slate-900 flex items-center gap-3 uppercase tracking-tighter">
+            <i className="fa-solid fa-list-check text-emerald-600"></i> DETALHAMENTO DE CONCLUSÕES
+          </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -305,10 +344,10 @@ const Reports: React.FC = () => {
               ))}
             </tbody>
           </table>
-          
+
           {stats.finishedOrders.length > 5 && (
             <div className="p-6 bg-slate-50/50 border-t border-slate-100">
-              <button 
+              <button
                 onClick={() => setShowAllDetails(!showAllDetails)}
                 className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-white transition-all font-black text-[10px] uppercase tracking-widest"
               >

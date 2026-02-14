@@ -2,30 +2,33 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, UserRole, Company } from '../types';
-import { storageService } from '../services/storageService';
+import { authService } from '../services/authService';
 
 interface LayoutProps {
   children: React.ReactNode;
   user: User | null;
+  company: Company | null;
   onUserChange: (user: User | null) => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, user, onUserChange }) => {
+const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   if (!user) return <>{children}</>;
 
-  const data = storageService.getData();
-  const company = user.companyId ? data.companies.find(c => c.id === user.companyId) : null;
   const isDev = user.role === UserRole.DEVELOPER;
   const isAdmin = user.role === UserRole.ADMIN;
 
-  const handleLogout = () => {
-    storageService.clearAuth();
-    onUserChange(null);
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await authService.signOut();
+      onUserChange(null);
+      navigate('/');
+    } catch (error) {
+      console.error("Erro ao sair:", error);
+    }
   };
 
   const navItems = [];

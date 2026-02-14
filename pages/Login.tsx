@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { storageService } from '../services/storageService';
-import { UserRole, CompanyPlan } from '../types';
+import { authService } from '../services/authService';
+import { UserRole } from '../types';
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -11,51 +11,31 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const loginWithCredentials = (userEmail: string, userPass: string) => {
-    const data = storageService.getData();
-    const user = data.users.find(u => u.email === userEmail && u.password === userPass);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-    if (user) {
-      // Verificar se a empresa está ativa (exceto para desenvolvedores)
-      if (user.role !== UserRole.DEVELOPER) {
-        const company = data.companies.find(c => c.id === user.companyId);
-
-        if (company) {
-          // Verificação de Status Manual
-          if (company.status === 'BLOCKED') {
-            setError('O acesso da sua empresa está temporariamente suspenso. Entre em contato com o suporte.');
-            return;
-          }
-
-          // Verificação de Expiração de Plano
-          if (company.plan !== CompanyPlan.LIVRE && company.expiresAt) {
-            const expirationDate = new Date(company.expiresAt);
-            if (new Date() > expirationDate) {
-              setError(`O seu plano (${company.plan}) expirou em ${expirationDate.toLocaleDateString('pt-BR')}. O sistema está bloqueado, por favor realize a renovação.`);
-              return;
-            }
-          }
-        }
-      }
+    try {
+      const user = await authService.signIn(email, password);
 
       if (user.isBlocked) {
-        setError('Este usuário está bloqueado.');
-        return;
+        throw new Error('Este usuário está bloqueado.');
       }
 
-      const { password: _, ...userWithoutPassword } = user;
-      data.currentUser = userWithoutPassword as any;
-      storageService.saveData(data);
-      onLogin(data.currentUser);
-    } else {
-      setError('Credenciais incorretas.');
+      onLogin(user);
+    } catch (err: any) {
+      console.error('Erro no login:', err);
+      if (err.message === 'Invalid login credentials') {
+        setError('E-mail ou senha incorretos.');
+      } else {
+        setError(err.message || 'Ocorreu um erro ao realizar o login.');
+      }
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    loginWithCredentials(email, password);
   };
 
   return (
@@ -83,7 +63,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <input
                 type="email"
                 required
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium text-sm"
+                disabled={loading}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium text-sm disabled:opacity-50"
                 placeholder="exemplo@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -95,7 +76,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <input
                 type="password"
                 required
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium text-sm"
+                disabled={loading}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium text-sm disabled:opacity-50"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -104,9 +86,17 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
             <button
               type="submit"
-              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98]"
+              disabled={loading}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              Entrar no Painel
+              {loading ? (
+                <>
+                  <i className="fa-solid fa-spinner fa-spin"></i>
+                  <span>Autenticando...</span>
+                </>
+              ) : (
+                'Entrar no Painel'
+              )}
             </button>
           </form>
         </div>

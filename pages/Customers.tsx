@@ -1,22 +1,53 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { storageService } from '../services/storageService';
-// Fixed: Removed non-existent OrderType import
-import { Customer, ServiceOrder, OrderStatus, UserRole } from '../types';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { Customer, ServiceOrder, OrderStatus, UserRole, User, Company } from '../types';
 import { Link } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
 
 const Customers: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [data, setData] = useState(storageService.getData());
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [openOSNow, setOpenOSNow] = useState(false);
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const loadData = async () => {
+    try {
+      const user = await authService.getCurrentUser();
+      setCurrentUser(user);
+
+      if (user?.companyId) {
+        const [fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
+          dbService.getCustomers(user.companyId),
+          dbService.getUsers(user.companyId),
+          dbService.getCompany(user.companyId)
+        ]);
+        setCustomers(fetchedCustomers);
+        setUsers(fetchedUsers);
+        setCompany(fetchedCompany);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar clientes:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   useEffect(() => {
     if (searchParams.get('action') === 'new') {
@@ -33,7 +64,7 @@ const Customers: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [toast]);
-  
+
   const getCurrentDateTime = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -52,11 +83,21 @@ const Customers: React.FC = () => {
 
   const [initialOS, setInitialOS] = useState({
     description: '',
-    type: data.settings.orderTypes[0] || 'Suporte',
+    type: 'Suporte',
     createdAt: getCurrentDateTime(),
     scheduledDate: '',
-    techId: data.users.find(u => u.role === UserRole.TECH)?.id || data.currentUser?.id || ''
+    techId: ''
   });
+
+  useEffect(() => {
+    if (company && users.length > 0) {
+      setInitialOS(prev => ({
+        ...prev,
+        type: company.settings.orderTypes[0] || 'Suporte',
+        techId: users.find(u => u.role === UserRole.TECH)?.id || currentUser?.id || ''
+      }));
+    }
+  }, [company, users, currentUser]);
 
   const maskPhone = (value: string) => {
     const numbers = value.replace(/\D/g, '');
@@ -70,11 +111,11 @@ const Customers: React.FC = () => {
     setFormData({ ...formData, phone: formatted });
   };
 
-  const uniqueCities = Array.from(new Set(data.customers.map(c => c.city).filter(Boolean))).sort();
+  const uniqueCities = Array.from(new Set(customers.map(c => c.city).filter(Boolean))).sort();
 
-  const filteredCustomers = data.customers.filter(c => {
-    const matchesSearch = 
-      c.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||
       c.city?.toLowerCase().includes(search.toLowerCase());
     const matchesCity = !selectedCity || c.city === selectedCity;
@@ -102,82 +143,89 @@ const Customers: React.FC = () => {
     setModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    let updatedCustomers = [...data.customers];
-    let updatedOrders = [...data.orders];
-    let targetCustomerId = '';
+    if (!currentUser?.companyId) return;
 
-    if (editingCustomer) {
-      targetCustomerId = editingCustomer.id;
-      updatedCustomers = updatedCustomers.map(c => 
-        c.id === editingCustomer.id ? { ...c, ...formData } : c
-      );
-      updatedOrders = updatedOrders.map(o => 
-        o.customerId === editingCustomer.id ? { ...o, customerName: formData.name } : o
-      );
-    } else {
-      targetCustomerId = Date.now().toString();
-      const customer: Customer = { ...formData, id: targetCustomerId, createdAt: new Date().toISOString(), companyId: data.currentUser?.companyId || '' };
-      updatedCustomers = [customer, ...updatedCustomers];
+    setLoading(true);
+    try {
+      if (editingCustomer) {
+        await dbService.updateCustomer(editingCustomer.id, formData);
+      } else {
+        const newCustomer = await dbService.createCustomer({
+          ...formData,
+          companyId: currentUser.companyId
+        });
 
-      if (openOSNow && initialOS.description) {
-        const tech = data.users.find(u => u.id === initialOS.techId) || data.currentUser;
-        // Fixed: Added missing companyId property to ServiceOrder
-        const newOrder: ServiceOrder = {
-          id: (Date.now() + 1).toString(),
-          companyId: data.currentUser?.companyId || '',
-          customerId: targetCustomerId,
-          customerName: customer.name,
-          techId: tech?.id || '',
-          techName: tech?.name || '',
-          type: initialOS.type,
-          description: initialOS.description,
-          scheduledDate: initialOS.scheduledDate ? new Date(initialOS.scheduledDate).toISOString() : undefined,
-          aiReport: '',
-          status: OrderStatus.OPEN,
-          createdAt: new Date(initialOS.createdAt).toISOString(),
-          posts: []
-        };
-        updatedOrders = [newOrder, ...updatedOrders];
+        if (openOSNow && initialOS.description) {
+          const tech = users.find(u => u.id === initialOS.techId) || currentUser;
+          await dbService.createOrder({
+            companyId: currentUser.companyId,
+            customerId: newCustomer.id,
+            customerName: newCustomer.name,
+            techId: tech?.id || '',
+            techName: tech?.name || '',
+            type: initialOS.type,
+            description: initialOS.description,
+            scheduledDate: initialOS.scheduledDate ? new Date(initialOS.scheduledDate).toISOString() : undefined,
+            aiReport: '',
+            status: OrderStatus.OPEN,
+            posts: []
+          });
+        }
       }
+
+      await loadData(); // Recarregar dados do Supabase
+      setModalOpen(false);
+      resetForm();
+      setToast({
+        message: editingCustomer ? 'Dados atualizados!' : (openOSNow ? 'Cliente e OS cadastrados!' : 'Cliente cadastrado com sucesso!'),
+        type: 'success'
+      });
+    } catch (error) {
+      console.error("Erro ao salvar cliente:", error);
+      setToast({ message: 'Erro ao salvar cliente.', type: 'error' });
+    } finally {
+      setLoading(false);
     }
-    
-    const updatedData = { ...data, customers: updatedCustomers, orders: updatedOrders };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setModalOpen(false);
-    resetForm();
-    setToast({ 
-      message: editingCustomer ? 'Dados atualizados!' : (openOSNow ? 'Cliente e OS cadastrados!' : 'Cliente cadastrado com sucesso!'), 
-      type: 'success' 
-    });
   };
 
   const resetForm = () => {
     setFormData({ name: '', phone: '', city: '', address: '', number: '', sector: '', notes: '' });
-    setInitialOS({ 
-      description: '', 
-      type: data.settings.orderTypes[0] || 'Suporte',
-      createdAt: getCurrentDateTime(), 
-      scheduledDate: '', 
-      techId: data.users.find(u => u.role === UserRole.TECH)?.id || data.currentUser?.id || '' 
+    setInitialOS({
+      description: '',
+      type: company?.settings.orderTypes[0] || 'Suporte',
+      createdAt: getCurrentDateTime(),
+      scheduledDate: '',
+      techId: users.find(u => u.role === UserRole.TECH)?.id || currentUser?.id || ''
     });
     setOpenOSNow(false);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!customerToDelete) return;
-    const updatedData = { ...data, customers: data.customers.filter(c => c.id !== customerToDelete) };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setCustomerToDelete(null);
-    setToast({ message: 'Cliente removido.', type: 'error' });
+    try {
+      await dbService.deleteCustomer(customerToDelete);
+      setCustomers(prev => prev.filter(c => c.id !== customerToDelete));
+      setCustomerToDelete(null);
+      setToast({ message: 'Cliente removido.', type: 'error' });
+    } catch (error) {
+      console.error("Erro ao remover cliente:", error);
+      setToast({ message: 'Erro ao remover cliente.', type: 'error' });
+    }
   };
+
+  if (loading && customers.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={!!customerToDelete}
         title="Excluir Cliente"
         message="Tem certeza que deseja excluir este cliente permanentemente? Histórico será preservado mas sem vínculo."
@@ -188,9 +236,8 @@ const Customers: React.FC = () => {
       />
 
       {toast && (
-        <div className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-top-4 duration-300 border ${
-          toast.type === 'success' ? 'bg-green-600 border-green-500 text-white' : 'bg-red-600 border-red-500 text-white'
-        }`}>
+        <div className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-top-4 duration-300 border ${toast.type === 'success' ? 'bg-green-600 border-green-500 text-white' : 'bg-red-600 border-red-500 text-white'
+          }`}>
           <i className={`fa-solid ${toast.type === 'success' ? 'fa-check-circle' : 'fa-trash-can'} text-xl`}></i>
           <span className="font-bold text-sm tracking-tight">{toast.message}</span>
         </div>
@@ -201,7 +248,7 @@ const Customers: React.FC = () => {
           <h1 className="text-3xl font-bold text-slate-900">Clientes</h1>
           <p className="text-slate-500 font-medium">Controle de base cadastral e serviços.</p>
         </div>
-        <button 
+        <button
           onClick={handleOpenNewModal}
           className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
         >
@@ -213,18 +260,18 @@ const Customers: React.FC = () => {
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Nome ou telefone..."
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          
+
           <div className="flex items-center gap-2 min-w-[200px]">
             <i className="fa-solid fa-filter text-slate-400 text-sm"></i>
-            <select 
+            <select
               className="flex-1 bg-white border border-slate-200 rounded-lg py-2.5 px-3 outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
@@ -282,7 +329,6 @@ const Customers: React.FC = () => {
         </div>
       </div>
 
-      {/* Optimized Form Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in duration-200">
@@ -295,15 +341,14 @@ const Customers: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleSave} className="p-8 space-y-8">
-              {/* Personal Section */}
               <div className="space-y-4">
                 <h4 className="font-bold text-blue-600 flex items-center gap-2 text-[11px] uppercase tracking-widest border-l-4 border-blue-500 pl-3">
-                   Dados Principais
+                  Dados Principais
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome Completo</label>
-                    <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                    <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">WhatsApp / Fone</label>
@@ -311,32 +356,31 @@ const Customers: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cidade e UF</label>
-                    <input type="text" required placeholder="Ex: Palmas/TO" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+                    <input type="text" required placeholder="Ex: Palmas/TO" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
                   </div>
                 </div>
               </div>
 
-              {/* Address Section */}
               <div className="space-y-4">
                 <h4 className="font-bold text-blue-600 flex items-center gap-2 text-[11px] uppercase tracking-widest border-l-4 border-blue-500 pl-3">
-                   Localização de Atendimento
+                  Localização de Atendimento
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Logradouro (Rua/Av)</label>
-                    <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                    <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Número / Complemento</label>
-                    <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} />
+                    <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" value={formData.number} onChange={e => setFormData({ ...formData, number: e.target.value })} />
                   </div>
                   <div className="md:col-span-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Bairro / Setor</label>
-                    <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.sector} onChange={e => setFormData({...formData, sector: e.target.value})} />
+                    <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.sector} onChange={e => setFormData({ ...formData, sector: e.target.value })} />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Notas de Acesso / Obs. Internas</label>
-                    <textarea className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" rows={2} placeholder="Ex: Cerca elétrica no muro, cachorro bravo, ligar antes..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
+                    <textarea className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" rows={2} placeholder="Ex: Cerca elétrica no muro, cachorro bravo, ligar antes..." value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
                   </div>
                 </div>
               </div>
@@ -362,25 +406,25 @@ const Customers: React.FC = () => {
                     <div className="grid grid-cols-1 gap-5 animate-in slide-in-from-top-4 duration-300 pt-2">
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Descrição Técnica do Pedido</label>
-                        <textarea required={openOSNow} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none bg-white font-medium" rows={2} placeholder="O que o cliente solicitou?" value={initialOS.description} onChange={e => setInitialOS({...initialOS, description: e.target.value})} />
+                        <textarea required={openOSNow} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none bg-white font-medium" rows={2} placeholder="O que o cliente solicitou?" value={initialOS.description} onChange={e => setInitialOS({ ...initialOS, description: e.target.value })} />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Natureza</label>
-                            <select className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold" value={initialOS.type} onChange={e => setInitialOS({...initialOS, type: e.target.value})}>
-                              {data.settings.orderTypes.map(type => <option key={type} value={type}>{type}</option>)}
-                            </select>
-                         </div>
-                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Responsável</label>
-                            <select className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold" value={initialOS.techId} onChange={e => setInitialOS({...initialOS, techId: e.target.value})}>
-                              {data.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
-                         </div>
-                         <div className="md:col-span-2">
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Data/Hora</label>
-                            <input type="datetime-local" required={openOSNow} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold text-blue-600" value={initialOS.scheduledDate} onChange={e => setInitialOS({...initialOS, scheduledDate: e.target.value})} />
-                         </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Natureza</label>
+                          <select className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold" value={initialOS.type} onChange={e => setInitialOS({ ...initialOS, type: e.target.value })}>
+                            {company?.settings.orderTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Responsável</label>
+                          <select className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold" value={initialOS.techId} onChange={e => setInitialOS({ ...initialOS, techId: e.target.value })}>
+                            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Data/Hora</label>
+                          <input type="datetime-local" required={openOSNow} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold text-blue-600" value={initialOS.scheduledDate} onChange={e => setInitialOS({ ...initialOS, scheduledDate: e.target.value })} />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -389,8 +433,12 @@ const Customers: React.FC = () => {
 
               <div className="pt-4 flex gap-4 sticky bottom-0 bg-white">
                 <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-4 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors">Descartar</button>
-                <button type="submit" className="flex-2 py-4 bg-blue-600 text-white rounded-xl font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2">
-                  <i className="fa-solid fa-check"></i>
+                <button type="submit" disabled={loading} className="flex-2 py-4 bg-blue-600 text-white rounded-xl font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
+                  {loading ? (
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                  ) : (
+                    <i className="fa-solid fa-check"></i>
+                  )}
                   {editingCustomer ? 'Salvar Alterações' : (openOSNow ? 'Criar Cliente e Agendar OS' : 'Confirmar Cadastro')}
                 </button>
               </div>

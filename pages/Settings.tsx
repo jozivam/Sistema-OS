@@ -1,10 +1,12 @@
 
-import React, { useState, useRef } from 'react';
-import { storageService } from '../services/storageService';
-import { UserRole, AppState } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { UserRole, AppState, Company, ServiceOrder, User, Customer } from '../types';
 
 const Settings: React.FC = () => {
-  const [data, setData] = useState(storageService.getData());
+  const [company, setCompany] = useState<Company | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [newType, setNewType] = useState('');
@@ -12,97 +14,142 @@ const Settings: React.FC = () => {
   const [editingTypeValue, setEditingTypeValue] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (data.currentUser?.role !== UserRole.ADMIN) return <div className="p-20 text-center font-black text-slate-400 uppercase tracking-widest">Acesso negado.</div>;
+  const loadData = async () => {
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      const companyData = await dbService.getCompany(user.companyId);
+      setCompany(companyData);
+    } catch (error) {
+      console.error("Erro ao carregar configurações:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
+
+  if (!company) {
+    return <div className="p-20 text-center font-bold">Empresa não encontrada.</div>;
+  }
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleAddType = (e: React.FormEvent) => {
+  const handleAddType = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = newType.trim();
     if (!trimmed) return;
 
-    if (data.settings.orderTypes.includes(trimmed)) {
+    const orderTypes = company.settings.orderTypes || [];
+    if (orderTypes.includes(trimmed)) {
       showToast('Esta natureza já existe.', 'error');
       return;
     }
 
-    const updatedSettings = {
-      ...data.settings,
-      orderTypes: [...data.settings.orderTypes, trimmed]
-    };
-    const updatedData = { ...data, settings: updatedSettings };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setNewType('');
-    showToast('Natureza cadastrada!', 'success');
+    try {
+      const updatedSettings = {
+        ...company.settings,
+        orderTypes: [...orderTypes, trimmed]
+      };
+      await dbService.updateCompany(company.id, { settings: updatedSettings });
+      setCompany({ ...company, settings: updatedSettings });
+      setNewType('');
+      showToast('Natureza cadastrada!', 'success');
+    } catch (error) {
+      showToast('Erro ao salvar natureza.', 'error');
+    }
   };
 
-  const handleUpdateType = (oldType: string) => {
+  const handleUpdateType = async (oldType: string) => {
     const trimmed = editingTypeValue.trim();
     if (!trimmed || trimmed === oldType) {
       setEditingType(null);
       return;
     }
 
-    if (data.settings.orderTypes.includes(trimmed)) {
+    const orderTypes = company.settings.orderTypes || [];
+    if (orderTypes.includes(trimmed)) {
       showToast('Esta natureza já existe.', 'error');
       return;
     }
 
-    const updatedOrderTypes = data.settings.orderTypes.map(t => t === oldType ? trimmed : t);
-    const updatedOrders = data.orders.map(o => o.type === oldType ? { ...o, type: trimmed } : o);
+    try {
+      const updatedOrderTypes = orderTypes.map(t => t === oldType ? trimmed : t);
+      const updatedSettings = { ...company.settings, orderTypes: updatedOrderTypes };
 
-    const updatedData = {
-      ...data,
-      orders: updatedOrders,
-      settings: { ...data.settings, orderTypes: updatedOrderTypes }
-    };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setEditingType(null);
-    showToast('Nomenclatura atualizada!', 'success');
+      // Nota: Em um banco relacional real, atualizar 'type' em todas as OS pode ser uma transação.
+      // Aqui apenas atualizamos as configurações da empresa primeiro.
+      await dbService.updateCompany(company.id, { settings: updatedSettings });
+      setCompany({ ...company, settings: updatedSettings });
+      setEditingType(null);
+      showToast('Nomenclatura atualizada!', 'success');
+    } catch (error) {
+      showToast('Erro ao atualizar natureza.', 'error');
+    }
   };
 
-  const handleRemoveType = (type: string) => {
-    if (data.settings.orderTypes.length <= 1) {
+  const handleRemoveType = async (type: string) => {
+    const orderTypes = company.settings.orderTypes || [];
+    if (orderTypes.length <= 1) {
       showToast('Mínimo de uma natureza necessária.', 'error');
       return;
     }
-    const updatedSettings = {
-      ...data.settings,
-      orderTypes: data.settings.orderTypes.filter(t => t !== type)
-    };
-    const updatedData = { ...data, settings: updatedSettings };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    showToast('Natureza removida.', 'success');
+
+    try {
+      const updatedSettings = {
+        ...company.settings,
+        orderTypes: orderTypes.filter(t => t !== type)
+      };
+      await dbService.updateCompany(company.id, { settings: updatedSettings });
+      setCompany({ ...company, settings: updatedSettings });
+      showToast('Natureza removida.', 'success');
+    } catch (error) {
+      showToast('Erro ao remover natureza.', 'error');
+    }
   };
 
-  const exportData = (format: 'json' | 'csv') => {
+  const exportData = async (format: 'json' | 'csv') => {
     setIsExporting(format);
     try {
+      // Fetch all data from Supabase for export
+      const [users, customers, orders] = await Promise.all([
+        dbService.getUsers(company.id),
+        dbService.getCustomers(company.id),
+        dbService.getOrders(company.id)
+      ]);
+
+      const exportObj = {
+        company,
+        users,
+        customers,
+        orders,
+        settings: company.settings,
+        version: "2.0-supabase"
+      };
+
       let content = '';
       let mimeType = '';
-      let fileName = `backup_os_ia_${new Date().toISOString().split('T')[0]}.${format}`;
+      let fileName = `backup_sistema_os_${new Date().toISOString().split('T')[0]}.${format}`;
 
       if (format === 'json') {
-        const cleanData = JSON.parse(JSON.stringify(data));
-        cleanData.orders = cleanData.orders.map((order: any) => ({
-          ...order,
-          attachments: order.attachments?.map((att: any) => ({
-            ...att,
-            data: ""
-          })) || []
-        }));
-
-        content = JSON.stringify(cleanData, null, 2);
+        content = JSON.stringify(exportObj, null, 2);
         mimeType = 'application/json';
       } else if (format === 'csv') {
         const headers = 'ID,Data,Cliente,Status,Tecnico,Tipo,Descricao\n';
-        const rows = data.orders.map(o => `${o.id},${o.createdAt},"${o.customerName}",${o.status},"${o.techName}",${o.type},"${o.description.replace(/"/g, '""')}"`).join('\n');
+        const rows = orders.map(o => `${o.id},${o.createdAt},"${o.customerName}",${o.status},"${o.techName}",${o.type},"${o.description.replace(/"/g, '""')}"`).join('\n');
         content = headers + rows;
         mimeType = 'text/csv';
       }
@@ -118,37 +165,22 @@ const Settings: React.FC = () => {
     } catch (e) {
       showToast('Falha na exportação.', 'error');
     } finally {
-      setTimeout(() => setIsExporting(null), 800);
+      setIsExporting(null);
     }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const importedData = JSON.parse(event.target?.result as string) as AppState;
-        if (!importedData.users || !importedData.customers || !importedData.orders) {
-          throw new Error("Estrutura de arquivo inválida.");
-        }
-        importedData.currentUser = data.currentUser;
-        storageService.saveData(importedData);
-        setData(importedData);
-        showToast('Dados restaurados com sucesso!', 'success');
-        setTimeout(() => window.location.reload(), 1500);
-      } catch (err) {
-        showToast('Erro ao importar: Arquivo inválido.', 'error');
-      }
-    };
-    reader.readAsText(file);
+    alert("Restauração via arquivo JSON habilitada apenas para leitura neste momento. Entre em contato com o suporte para restauração massiva no banco de dados.");
+    // No Supabase, importar dados massivos deveria ser feito com cuidado ou via Admin.
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const downloadAllDocumentsAsZip = async () => {
     setIsExporting('zip');
     try {
+      const orders = await dbService.getOrders(company.id);
       const JSZip = (window as any).JSZip;
       const saveAs = (window as any).saveAs;
       if (!JSZip || !saveAs) {
@@ -157,7 +189,7 @@ const Settings: React.FC = () => {
       }
       const zip = new JSZip();
       let fileCount = 0;
-      data.orders.forEach(order => {
+      orders.forEach(order => {
         if (order.attachments && order.attachments.length > 0) {
           const folderName = `OS_${order.id.slice(-4)}_${order.customerName.replace(/[^a-z0-9]/gi, '_')}`;
           const folder = zip.folder(folderName);
@@ -175,7 +207,7 @@ const Settings: React.FC = () => {
         return;
       }
       const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, `documentos_sistema_os_ia_${new Date().toISOString().split('T')[0]}.zip`);
+      saveAs(content, `documentos_sistema_os_${new Date().toISOString().split('T')[0]}.zip`);
       showToast(`${fileCount} documentos compactados!`, 'success');
     } catch (error) {
       console.error(error);
@@ -226,7 +258,7 @@ const Settings: React.FC = () => {
           <div className="space-y-4">
             <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest block mb-6">REGISTROS DISPONÍVEIS</span>
             <div className="grid grid-cols-1 gap-3 max-h-[450px] overflow-y-auto custom-scrollbar pr-3">
-              {data.settings.orderTypes.map(type => (
+              {(company.settings.orderTypes || []).map(type => (
                 <div key={type} className="flex items-center justify-between p-5 bg-slate-50/50 border border-slate-50 rounded-2xl group hover:border-blue-100 transition-all">
                   {editingType === type ? (
                     <div className="flex-1 flex items-center gap-2">
@@ -284,7 +316,7 @@ const Settings: React.FC = () => {
 
           <div className="space-y-12 flex-1">
             <div className="space-y-6">
-              <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest block mb-2">BASE DE DADOS (SISTEMA)</span>
+              <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest block mb-2">BASE DE DADOS (CLOUD)</span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <button
@@ -294,17 +326,17 @@ const Settings: React.FC = () => {
                 >
                   <i className="fa-solid fa-cloud-arrow-down text-blue-600 mb-6 text-2xl"></i>
                   <span className="block text-[11px] font-black uppercase text-slate-900 leading-tight tracking-tight">BACKUP (.JSON)</span>
-                  <span className="text-[8px] font-black text-slate-400 tracking-widest mt-2 uppercase">Exportar Registros</span>
+                  <span className="text-[8px] font-black text-slate-400 tracking-widest mt-2 uppercase">Exportar Nuvem</span>
                 </button>
 
                 <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-start p-8 bg-blue-50/30 rounded-[2rem] border border-blue-50 hover:border-blue-600 hover:bg-white transition-all group text-left w-full shadow-sm"
+                  className="flex flex-col items-start p-8 bg-blue-50/30 rounded-[2rem] border border-blue-50 hover:border-blue-600 hover:bg-white transition-all group text-left w-full shadow-sm opacity-50 cursor-not-allowed"
                 >
                   <i className="fa-solid fa-cloud-arrow-up text-blue-600 mb-6 text-2xl"></i>
                   <span className="block text-[11px] font-black uppercase text-blue-900 leading-tight tracking-tight">RESTAURAR (.JSON)</span>
-                  <span className="text-[8px] font-black text-blue-400 tracking-widest mt-2 uppercase">Importar Dados</span>
+                  <span className="text-[8px] font-black text-blue-400 tracking-widest mt-2 uppercase">Bloqueado em Cloud</span>
                 </button>
               </div>
             </div>
@@ -324,7 +356,7 @@ const Settings: React.FC = () => {
                     </div>
                     <div>
                       <span className="block text-[11px] font-black uppercase text-orange-900 leading-none mb-2 tracking-tight">DOWNLOAD CONSOLIDADO (.ZIP)</span>
-                      <span className="text-[8px] font-black text-orange-400 tracking-widest uppercase">BAIXAR TODOS OS ANEXOS DO SISTEMA</span>
+                      <span className="text-[8px] font-black text-orange-400 tracking-widest uppercase">BAIXAR TODOS OS ANEXOS</span>
                     </div>
                   </div>
                   <i className="fa-solid fa-chevron-right text-orange-200 group-hover:translate-x-1 transition-transform"></i>

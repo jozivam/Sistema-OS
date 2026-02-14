@@ -1,17 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { storageService } from '../services/storageService';
-// Fixed: Removed non-existent OrderType import
-import { OrderStatus, Customer, UserRole, ServiceOrder } from '../types';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { OrderStatus, Customer, UserRole, ServiceOrder, User } from '../types';
 
 const CustomerDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState(storageService.getData());
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
-  
-  const customer = data.customers.find(c => c.id === id);
-  const orders = data.orders.filter(o => o.customerId === id);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -23,21 +23,44 @@ const CustomerDetails: React.FC = () => {
     notes: ''
   });
 
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const loadData = async () => {
+    if (!id) return;
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      setCurrentUser(user);
+
+      const [customerData, allOrders] = await Promise.all([
+        dbService.getCustomer(id),
+        dbService.getOrders(user.companyId)
+      ]);
+
+      if (customerData) {
+        setCustomer(customerData);
+        setFormData({
+          name: customerData.name,
+          phone: customerData.phone,
+          city: customerData.city,
+          address: customerData.address,
+          number: customerData.number || '',
+          sector: customerData.sector || '',
+          notes: customerData.notes
+        });
+      }
+
+      setOrders(allOrders.filter(o => o.customerId === id));
+    } catch (error) {
+      console.error("Erro ao carregar detalhes do cliente:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (customer) {
-      setFormData({
-        name: customer.name,
-        phone: customer.phone,
-        city: customer.city,
-        address: customer.address,
-        number: customer.number || '',
-        sector: customer.sector || '',
-        notes: customer.notes
-      });
-    }
-  }, [customer]);
+    loadData();
+  }, [id]);
 
   useEffect(() => {
     if (toast) {
@@ -45,6 +68,14 @@ const CustomerDetails: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
 
   if (!customer) {
     return (
@@ -58,7 +89,7 @@ const CustomerDetails: React.FC = () => {
 
   const finishedOrders = orders.filter(o => o.status === OrderStatus.FINISHED)
     .sort((a, b) => (b.finishedAt || b.createdAt).localeCompare(a.finishedAt || a.createdAt));
-  
+
   const activeOrders = orders.filter(o => o.status !== OrderStatus.FINISHED)
     .sort((a, b) => {
       if (!a.scheduledDate) return 1;
@@ -78,29 +109,33 @@ const CustomerDetails: React.FC = () => {
     setFormData({ ...formData, phone: formatted });
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updatedCustomers = data.customers.map(c => 
-      c.id === id ? { ...c, ...formData } : c
-    );
-    // Sincronizar nome nas OS
-    const updatedOrders = data.orders.map(o => 
-      o.customerId === id ? { ...o, customerName: formData.name } : o
-    );
+    if (!id) return;
 
-    const updatedData = { ...data, customers: updatedCustomers, orders: updatedOrders };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setEditModalOpen(false);
-    setToast({ message: 'Dados do cliente atualizados com sucesso!', type: 'success' });
+    try {
+      await dbService.updateCustomer(id, formData);
+      setCustomer({ ...customer, ...formData });
+
+      // Sincronizar nome nas OS (Isso pode ser feito no lado do servidor ou em massa se necessário)
+      // No Supabase, se usamos relacionamentos, o nome do cliente deveria vir do JOIN.
+      // Se estamos desnormalizando, precisamos atualizar as OS.
+      // Para manter a funcionalidade original de atualizar a lista local:
+      setOrders(prev => prev.map(o => o.customerId === id ? { ...o, customerName: formData.name } : o));
+
+      setEditModalOpen(false);
+      setToast({ message: 'Dados do cliente atualizados com sucesso!', type: 'success' });
+    } catch (error) {
+      console.error("Erro ao atualizar cliente:", error);
+      setToast({ message: 'Erro ao atualizar dados do cliente.', type: 'error' });
+    }
   };
 
   return (
     <div className="relative">
       {toast && (
-        <div className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-top-4 duration-300 border ${
-          toast.type === 'success' ? 'bg-green-600 border-green-500 text-white' : 'bg-red-600 border-red-500 text-white'
-        }`}>
+        <div className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-top-4 duration-300 border ${toast.type === 'success' ? 'bg-green-600 border-green-500 text-white' : 'bg-red-600 border-red-500 text-white'
+          }`}>
           <i className={`fa-solid fa-check-circle text-xl`}></i>
           <span className="font-bold text-sm tracking-tight">{toast.message}</span>
         </div>
@@ -116,13 +151,13 @@ const CustomerDetails: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={() => setEditModalOpen(true)}
             className="bg-white border border-slate-200 text-slate-600 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
           >
             <i className="fa-solid fa-user-pen"></i> Alterar Dados
           </button>
-          <Link 
+          <Link
             to={`/ordens?clientId=${customer.id}`}
             className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95"
           >
@@ -141,8 +176,8 @@ const CustomerDetails: React.FC = () => {
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Telefone / WhatsApp</p>
                 <div className="flex items-center gap-2">
-                   <i className="fa-brands fa-whatsapp text-green-500"></i>
-                   <p className="text-slate-900 font-bold text-lg">{customer.phone}</p>
+                  <i className="fa-brands fa-whatsapp text-green-500"></i>
+                  <p className="text-slate-900 font-bold text-lg">{customer.phone}</p>
                 </div>
               </div>
 
@@ -196,9 +231,8 @@ const CustomerDetails: React.FC = () => {
                         </div>
                         <h3 className="font-bold text-slate-900 mt-1 line-clamp-2 leading-snug">{order.description}</h3>
                       </div>
-                      <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase whitespace-nowrap ${
-                        order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                      }`}>
+                      <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase whitespace-nowrap ${order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                        }`}>
                         {order.status}
                       </span>
                     </div>
@@ -221,7 +255,7 @@ const CustomerDetails: React.FC = () => {
             <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">
               <i className="fa-solid fa-clipboard-check text-green-600"></i> Histórico de Serviços Concluídos
             </h2>
-            
+
             <div className="space-y-6">
               {finishedOrders.map(order => (
                 <div key={order.id} className="border-b border-slate-100 pb-6 last:border-0 hover:bg-slate-50/50 p-3 rounded-xl transition-all">
@@ -232,9 +266,9 @@ const CustomerDetails: React.FC = () => {
                     </div>
                     <span className="text-[11px] text-slate-400 font-medium">Concluído: {order.finishedAt ? new Date(order.finishedAt).toLocaleDateString('pt-BR') : 'N/A'}</span>
                   </div>
-                  
+
                   <p className="font-bold text-slate-700 text-lg mb-3 line-clamp-2 leading-tight">{order.description}</p>
-                  
+
                   <div className="flex items-center gap-4 text-xs">
                     <span className="text-slate-400 flex items-center gap-1.5">
                       <i className="fa-solid fa-user-check"></i> Técnico: <span className="text-slate-500 font-bold">{order.techName}</span>
@@ -269,7 +303,7 @@ const CustomerDetails: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Nome Completo</label>
-                  <input type="text" required className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                  <input type="text" required className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Telefone / WhatsApp</label>
@@ -277,23 +311,23 @@ const CustomerDetails: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Cidade / Região</label>
-                  <input type="text" required className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+                  <input type="text" required className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Endereço (Rua/Av)</label>
-                  <input type="text" required className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                  <input type="text" required className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Número / Apto</label>
-                  <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} />
+                  <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.number} onChange={e => setFormData({ ...formData, number: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Setor / Bairro</label>
-                  <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.sector} onChange={e => setFormData({...formData, sector: e.target.value})} />
+                  <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={formData.sector} onChange={e => setFormData({ ...formData, sector: e.target.value })} />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Observação / Notas Internas</label>
-                  <textarea className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" rows={3} value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
+                  <textarea className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" rows={3} value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
                 </div>
               </div>
 

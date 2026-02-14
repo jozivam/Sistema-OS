@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { storageService } from './services/storageService';
+import { authService } from './services/authService';
 import { dbService } from './services/dbService';
 import { supabase } from './services/supabaseClient';
 import { User, UserRole, Company } from './types';
@@ -26,30 +27,35 @@ import DeveloperSettings from './pages/DeveloperSettings';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const initApp = async () => {
-      const data = storageService.getData();
-      if (data.currentUser) {
-        setCurrentUser(data.currentUser);
-
-        // Tentar buscar empresas atualizadas do Supabase
+    // Escutar mudanças de autenticação do Supabase
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
         try {
-          const supabaseCompanies = await dbService.getCompanies();
-          if (supabaseCompanies.length > 0) {
-            const updatedData = { ...data, companies: supabaseCompanies };
-            storageService.saveData(updatedData);
-            // Isso garantirá que o resto do sistema use os dados do banco
+          // Buscar dados do perfil do usuário em public.users
+          const user = await authService.getCurrentUser();
+          setCurrentUser(user);
+
+          if (user?.companyId) {
+            const companyData = await dbService.getCompany(user.companyId);
+            setCompany(companyData);
           }
-        } catch (err) {
-          console.warn('Supabase não disponível ainda ou erro de conexão:', err);
+        } catch (error) {
+          console.error("Erro ao carregar perfil do usuário:", error);
         }
+      } else {
+        setCurrentUser(null);
+        setCompany(null);
       }
       setLoading(false);
-    };
+    });
 
-    initApp();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleUserChange = (user: User | null) => {
@@ -68,32 +74,26 @@ const App: React.FC = () => {
     return <Login onLogin={handleUserChange} />;
   }
 
-  const data = storageService.getData();
-  const company = currentUser.companyId ? data.companies.find(c => c.id === currentUser.companyId) : null;
   const isDev = currentUser.role === UserRole.DEVELOPER;
   const isAdmin = currentUser.role === UserRole.ADMIN;
 
   return (
     <Router>
-      <Layout user={currentUser} onUserChange={handleUserChange}>
+      <Layout user={currentUser} company={company} onUserChange={handleUserChange}>
         <Routes>
-          {/* Rota inicial condicional */}
           <Route path="/" element={<Navigate to={isDev ? "/developer" : "/dashboard"} replace />} />
 
-          {/* Rotas de Desenvolvedor */}
           {isDev && (
             <>
               <Route path="/developer" element={<DeveloperPanel />} />
               <Route path="/developer/pagamentos" element={<DeveloperPayments />} />
               <Route path="/developer/configuracoes" element={<DeveloperSettings />} />
               <Route path="/developer/empresa/:id" element={<CompanyManagement />} />
-              {/* Dev pode acessar tudo para suporte */}
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/relatorios" element={<Reports />} />
             </>
           )}
 
-          {/* Rotas de Empresa */}
           {!isDev && (
             <>
               <Route path="/dashboard" element={<Dashboard />} />

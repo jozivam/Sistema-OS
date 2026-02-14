@@ -1,15 +1,18 @@
 
-import React, { useState } from 'react';
-import { storageService } from '../services/storageService';
+import React, { useState, useEffect } from 'react';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
 import { User, UserRole } from '../types';
 import { Link } from 'react-router-dom';
 
 const Users: React.FC = () => {
-  const [data, setData] = useState(storageService.getData());
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState('');
-  
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -20,9 +23,24 @@ const Users: React.FC = () => {
     isBlocked: false
   });
 
-  if (data.currentUser?.role !== UserRole.ADMIN) {
-    return <div className="p-20 text-center font-bold">Acesso negado.</div>;
-  }
+  const loadData = async () => {
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      setCurrentUser(user);
+
+      const fetchedUsers = await dbService.getUsers(user.companyId);
+      setUsers(fetchedUsers);
+    } catch (error) {
+      console.error("Erro ao carregar usuários:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Máscara de telefone idêntica à de clientes
   const maskPhone = (value: string) => {
@@ -37,9 +55,9 @@ const Users: React.FC = () => {
     setFormData({ ...formData, phone: formatted });
   };
 
-  const uniqueCities = Array.from(new Set(data.users.map(u => u.city).filter(Boolean))).sort();
+  const uniqueCities = Array.from(new Set(users.map(u => u.city).filter(Boolean))).sort();
 
-  const filteredUsers = data.users.filter(u => {
+  const filteredUsers = users.filter(u => {
     const matchesCity = !selectedCity || u.city === selectedCity;
     return matchesCity;
   });
@@ -51,7 +69,7 @@ const Users: React.FC = () => {
         name: user.name,
         email: user.email,
         phone: user.phone || '',
-        password: user.password || '',
+        password: '', // Não carregamos a senha do banco
         role: user.role,
         city: user.city || '',
         isBlocked: user.isBlocked || false
@@ -63,53 +81,74 @@ const Users: React.FC = () => {
     setModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    let updatedUsers: User[];
-    
-    if (editingUserId) {
-      // Atualizar usuário existente
-      updatedUsers = data.users.map(u => 
-        u.id === editingUserId 
-          ? { ...u, ...formData } 
-          : u
-      );
-    } else {
-      // Criar novo usuário
-      const newUser: User = {
-        ...formData,
-        id: Date.now().toString()
-      };
-      updatedUsers = [...data.users, newUser];
+    try {
+      if (editingUserId) {
+        await dbService.updateUser(editingUserId, {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          role: formData.role,
+          city: formData.city,
+          isBlocked: formData.isBlocked,
+          ...(formData.password && { password: formData.password }) // Only send password if it's not empty
+        });
+        setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
+      } else {
+        const newUser = await dbService.createUser({
+          companyId: currentUser?.companyId || '',
+          ...formData
+        });
+        setUsers(prev => [...prev, newUser]);
+      }
+      setModalOpen(false);
+    } catch (error) {
+      console.error("Erro ao salvar usuário:", error);
+      alert("Erro ao salvar usuário.");
     }
-
-    const updatedData = { ...data, users: updatedUsers };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setModalOpen(false);
   };
 
-  const toggleBlock = (userId: string) => {
-    if (userId === data.currentUser?.id) return alert('Você não pode bloquear a si mesmo!');
-    
-    const updatedUsers = data.users.map(u => 
-      u.id === userId ? { ...u, isBlocked: !u.isBlocked } : u
-    );
-    
-    const updatedData = { ...data, users: updatedUsers };
-    storageService.saveData(updatedData);
-    setData(updatedData);
+  const toggleBlock = async (userId: string) => {
+    if (userId === currentUser?.id) return alert('Você não pode bloquear a si mesmo!');
+
+    try {
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+
+      const newBlockedState = !user.isBlocked;
+      await dbService.updateUser(userId, { isBlocked: newBlockedState });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, isBlocked: newBlockedState } : u));
+    } catch (error) {
+      console.error("Erro ao alterar bloqueio:", error);
+      alert("Erro ao alterar bloqueio do usuário.");
+    }
   };
 
-  const handleDelete = (id: string) => {
-    if (id === data.currentUser?.id) return alert('Você não pode excluir a si mesmo!');
+  const handleDelete = async (id: string) => {
+    if (id === currentUser?.id) return alert('Você não pode excluir a si mesmo!');
     if (!window.confirm('Excluir este usuário permanentemente?')) return;
-    
-    const updatedData = { ...data, users: data.users.filter(u => u.id !== id) };
-    storageService.saveData(updatedData);
-    setData(updatedData);
+
+    try {
+      await dbService.deleteUser(id);
+      setUsers(prev => prev.filter(u => u.id !== id));
+    } catch (error) {
+      console.error("Erro ao excluir usuário:", error);
+      alert("Erro ao excluir usuário.");
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
+
+  if (currentUser?.role !== UserRole.ADMIN && currentUser?.role !== UserRole.DEVELOPER) {
+    return <div className="p-20 text-center font-bold">Acesso negado.</div>;
+  }
 
   return (
     <div>
@@ -118,7 +157,7 @@ const Users: React.FC = () => {
           <h1 className="text-3xl font-bold text-slate-900">Usuários</h1>
           <p className="text-slate-500">Gerencie técnicos e administradores do sistema.</p>
         </div>
-        <button 
+        <button
           onClick={() => openModal()}
           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all"
         >
@@ -128,9 +167,9 @@ const Users: React.FC = () => {
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
-           <div className="flex items-center gap-2 min-w-[200px]">
+          <div className="flex items-center gap-2 min-w-[200px]">
             <i className="fa-solid fa-map-location-dot text-slate-400"></i>
-            <select 
+            <select
               className="flex-1 bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
@@ -158,13 +197,13 @@ const Users: React.FC = () => {
                 <tr key={user.id} className={`hover:bg-slate-50 transition-colors group ${user.isBlocked ? 'opacity-60 bg-slate-50' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 font-bold text-slate-800">
-                       <i className={`fa-solid fa-circle-user ${user.isBlocked ? 'text-red-300' : 'text-slate-300'}`}></i>
-                       <span className={user.isBlocked ? 'line-through text-slate-400' : 'text-blue-600'}>{user.name}</span>
+                      <i className={`fa-solid fa-circle-user ${user.isBlocked ? 'text-red-300' : 'text-slate-300'}`}></i>
+                      <span className={user.isBlocked ? 'line-through text-slate-400' : 'text-blue-600'}>{user.name}</span>
                     </div>
                     <div className="ml-8">
-                       <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold uppercase">
-                          {user.city || 'Sem Região'}
-                       </span>
+                      <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold uppercase">
+                        {user.city || 'Sem Região'}
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -172,9 +211,8 @@ const Users: React.FC = () => {
                     <div className="text-slate-400 text-xs font-medium">{user.phone || 'Sem telefone'}</div>
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${
-                      user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'
-                    }`}>
+                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'
+                      }`}>
                       {user.role}
                     </span>
                     {user.isBlocked && (
@@ -183,21 +221,21 @@ const Users: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      <button 
+                      <button
                         onClick={() => toggleBlock(user.id)}
                         className={`p-2 rounded-lg transition-colors ${user.isBlocked ? 'text-green-500 hover:bg-green-50' : 'text-orange-500 hover:bg-orange-50'}`}
                         title={user.isBlocked ? "Desbloquear Usuário" : "Bloquear Usuário"}
                       >
                         <i className={`fa-solid ${user.isBlocked ? 'fa-lock-open' : 'fa-lock'}`}></i>
                       </button>
-                      <button 
+                      <button
                         onClick={() => openModal(user)}
                         className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"
                         title="Editar Usuário"
                       >
                         <i className="fa-solid fa-pen-to-square"></i>
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDelete(user.id)}
                         className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
                         title="Excluir Usuário"
@@ -228,38 +266,38 @@ const Users: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Nome Completo</label>
-                  <input 
+                  <input
                     type="text" required
                     placeholder="Ex: Carlos Oliveira"
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     value={formData.name}
-                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">E-mail de Acesso</label>
-                  <input 
+                  <input
                     type="email" required
                     placeholder="carlos@empresa.com"
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     value={formData.email}
-                    onChange={e => setFormData({...formData, email: e.target.value})}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Cidade / Região</label>
-                  <input 
+                  <input
                     type="text" required
                     placeholder="Ex: Palmas/TO"
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     value={formData.city}
-                    onChange={e => setFormData({...formData, city: e.target.value})}
+                    onChange={e => setFormData({ ...formData, city: e.target.value })}
                   />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Telefone / WhatsApp</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     required
                     maxLength={14}
                     placeholder="(00)90000-0000"
@@ -269,15 +307,15 @@ const Users: React.FC = () => {
                   />
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Senha</label>
-                <input 
-                  type="text" required
+                <input
+                  type="text" required={!editingUserId} // Password is required for new users
                   placeholder="Defina uma senha"
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   value={formData.password}
-                  onChange={e => setFormData({...formData, password: e.target.value})}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
                   {editingUserId ? 'Altere para definir uma nova senha de acesso.' : 'Senha inicial para o primeiro acesso.'}
@@ -285,36 +323,37 @@ const Users: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Nível de Permissão</label>
-                <select 
+                <select
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                   value={formData.role}
-                  onChange={e => setFormData({...formData, role: e.target.value as UserRole})}
+                  onChange={e => setFormData({ ...formData, role: e.target.value as UserRole })}
                 >
                   <option value={UserRole.TECH}>Técnico (Acesso restrito às suas OS)</option>
                   <option value={UserRole.ADMIN}>Administrador (Acesso total)</option>
+                  <option value={UserRole.DEVELOPER}>Desenvolvedor (Gestor Supremo)</option>
                 </select>
               </div>
 
               <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="userBlocked"
                   className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                   checked={formData.isBlocked}
-                  onChange={e => setFormData({...formData, isBlocked: e.target.checked})}
+                  onChange={e => setFormData({ ...formData, isBlocked: e.target.checked })}
                 />
                 <label htmlFor="userBlocked" className="text-sm font-bold text-slate-700 select-none">Bloquear acesso deste usuário (Férias/Afastamento)</label>
               </div>
-              
+
               <div className="pt-4 flex gap-3">
-                <button 
+                <button
                   type="button"
                   onClick={() => setModalOpen(false)}
                   className="flex-1 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all"
                 >

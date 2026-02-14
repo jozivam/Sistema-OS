@@ -1,57 +1,99 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { storageService } from '../services/storageService';
-import { OrderStatus, ServiceOrder, UserRole, OrderAttachment } from '../types';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { OrderStatus, ServiceOrder, UserRole, OrderAttachment, User, Customer, Company } from '../types';
 import { Link, useSearchParams } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
 
 const Orders: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const [data, setData] = useState(storageService.getData());
+  const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [isModalOpen, setModalOpen] = useState(false);
   const [showAllOrders, setShowAllOrders] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [filters, setFilters] = useState({
     status: '',
     tech: '',
     search: ''
   });
 
-  const currentUser = data.currentUser;
-  const company = data.companies.find(c => c.id === currentUser?.companyId);
-  const settings = company?.settings || data.settings;
-  const isAdmin = currentUser?.role === UserRole.ADMIN;
-  
+  const [newOrder, setNewOrder] = useState({
+    customerId: searchParams.get('clientId') || '',
+    techId: '',
+    type: '',
+    description: '',
+    createdAt: '',
+    scheduledDate: '',
+    attachments: [] as OrderAttachment[]
+  });
+
   const getCurrentDateTime = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     return now.toISOString().slice(0, 16);
   };
 
-  const [newOrder, setNewOrder] = useState({
-    customerId: searchParams.get('clientId') || '',
-    techId: currentUser?.role === UserRole.TECH ? currentUser.id : '',
-    type: settings.orderTypes[0] || 'Suporte',
-    description: '',
-    createdAt: getCurrentDateTime(),
-    scheduledDate: '',
-    attachments: [] as OrderAttachment[]
-  });
+  const loadData = async () => {
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      setCurrentUser(user);
+
+      const [fetchedOrders, fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
+        dbService.getOrders(user.companyId),
+        dbService.getCustomers(user.companyId),
+        dbService.getUsers(user.companyId),
+        dbService.getCompany(user.companyId)
+      ]);
+
+      setOrders(fetchedOrders);
+      setCustomers(fetchedCustomers);
+      setUsers(fetchedUsers);
+      setCompany(fetchedCompany);
+
+      const defaultType = fetchedCompany?.settings.orderTypes[0] || 'Suporte';
+      setNewOrder(prev => ({
+        ...prev,
+        techId: user.role === UserRole.TECH ? user.id : '',
+        type: defaultType,
+        createdAt: getCurrentDateTime()
+      }));
+
+    } catch (error) {
+      console.error("Erro ao carregar dados de ordens:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   useEffect(() => {
     if (searchParams.get('clientId')) setModalOpen(true);
   }, [searchParams]);
 
-  const filteredOrders = data.orders.filter(order => {
+  const isAdmin = currentUser?.role === UserRole.ADMIN;
+  const settings = company?.settings || (window as any).initialData?.settings;
+
+  const filteredOrders = orders.filter(order => {
     const matchesUser = isAdmin || order.techId === currentUser?.id;
     const matchesStatus = !filters.status || order.status === filters.status;
     const matchesTech = !filters.tech || order.techId === filters.tech;
-    const matchesSearch = !filters.search || 
+    const matchesSearch = !filters.search ||
       order.customerName.toLowerCase().includes(filters.search.toLowerCase()) ||
       order.id.toLowerCase().includes(filters.search.toLowerCase());
-    
+
     return matchesUser && matchesStatus && matchesTech && matchesSearch;
   });
 
@@ -89,60 +131,74 @@ const Orders: React.FC = () => {
     }));
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const customer = data.customers.find(c => c.id === newOrder.customerId);
-    const tech = data.users.find(u => u.id === newOrder.techId);
+    try {
+      const customer = customers.find(c => c.id === newOrder.customerId);
+      const tech = users.find(u => u.id === newOrder.techId);
 
-    if (!customer || !tech) {
-      alert('Selecione um cliente e um técnico válidos.');
-      return;
+      if (!customer || !tech) {
+        alert('Selecione um cliente e um técnico válidos.');
+        return;
+      }
+
+      const orderData: Omit<ServiceOrder, 'id' | 'createdAt'> = {
+        companyId: currentUser?.companyId || '',
+        customerId: customer.id,
+        customerName: customer.name,
+        techId: tech.id,
+        techName: tech.name,
+        type: newOrder.type,
+        description: newOrder.description,
+        scheduledDate: newOrder.scheduledDate,
+        aiReport: '',
+        status: OrderStatus.OPEN,
+        posts: [],
+        attachments: newOrder.attachments
+      };
+
+      const createdOrder = await dbService.createOrder(orderData);
+      setOrders(prev => [createdOrder, ...prev]);
+      setModalOpen(false);
+
+      setNewOrder({
+        customerId: '',
+        techId: currentUser?.role === UserRole.TECH ? currentUser.id : '',
+        type: settings?.orderTypes[0] || 'Suporte',
+        description: '',
+        createdAt: getCurrentDateTime(),
+        scheduledDate: '',
+        attachments: []
+      });
+    } catch (error) {
+      console.error("Erro ao criar OS:", error);
+      alert("Erro ao criar OS. Tente novamente.");
     }
-
-    const order: ServiceOrder = {
-      id: Date.now().toString(),
-      companyId: currentUser?.companyId || '',
-      customerId: customer.id,
-      customerName: customer.name,
-      techId: tech.id,
-      techName: tech.name,
-      type: newOrder.type,
-      description: newOrder.description,
-      scheduledDate: newOrder.scheduledDate,
-      aiReport: '',
-      status: OrderStatus.OPEN,
-      createdAt: new Date(newOrder.createdAt).toISOString(),
-      posts: [],
-      attachments: newOrder.attachments
-    };
-
-    const updatedData = { ...data, orders: [order, ...data.orders] };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setModalOpen(false);
-    setNewOrder({ 
-      customerId: '', 
-      techId: currentUser?.role === UserRole.TECH ? currentUser.id : '', 
-      type: settings.orderTypes[0] || 'Suporte',
-      description: '', 
-      createdAt: getCurrentDateTime(), 
-      scheduledDate: '',
-      attachments: []
-    });
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!orderToDelete) return;
-    const updatedOrders = data.orders.filter(o => o.id !== orderToDelete);
-    const updatedData = { ...data, orders: updatedOrders };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setOrderToDelete(null);
+    try {
+      await dbService.deleteOrder(orderToDelete);
+      setOrders(prev => prev.filter(o => o.id !== orderToDelete));
+      setOrderToDelete(null);
+    } catch (error) {
+      console.error("Erro ao excluir OS:", error);
+      alert("Erro ao excluir OS.");
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-in fade-in duration-500 pb-10">
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={!!orderToDelete}
         title="Excluir Atendimento"
         message="Deseja realmente remover esta Ordem de Serviço permanentemente? Esta ação não pode ser desfeita."
@@ -157,7 +213,7 @@ const Orders: React.FC = () => {
           <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Ordens de Serviço</h1>
           <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">Gestão de atendimentos e produtividade</p>
         </div>
-        <button 
+        <button
           onClick={() => setModalOpen(true)}
           className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-2"
         >
@@ -170,19 +226,19 @@ const Orders: React.FC = () => {
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col lg:flex-row gap-4">
           <div className="relative flex-1">
             <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Buscar por cliente ou ID..."
               className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
               value={filters.search}
-              onChange={(e) => setFilters({...filters, search: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
             />
           </div>
           <div className="flex gap-3">
-            <select 
+            <select
               className="flex-1 lg:flex-none px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-xs font-black uppercase tracking-widest"
               value={filters.status}
-              onChange={(e) => setFilters({...filters, status: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value as OrderStatus })}
             >
               <option value="">Todos Status</option>
               {Object.values(OrderStatus).map(status => <option key={status} value={status}>{status}</option>)}
@@ -208,12 +264,11 @@ const Orders: React.FC = () => {
                     <tr key={order.id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-1.5">
-                          <span className={`w-fit text-[9px] px-2.5 py-1 rounded-lg font-black uppercase tracking-widest border ${
-                            order.status === OrderStatus.FINISHED ? 'bg-green-50 text-green-700 border-green-100' :
+                          <span className={`w-fit text-[9px] px-2.5 py-1 rounded-lg font-black uppercase tracking-widest border ${order.status === OrderStatus.FINISHED ? 'bg-green-50 text-green-700 border-green-100' :
                             order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                            order.status === OrderStatus.CANCELLED ? 'bg-red-50 text-red-700 border-red-100' :
-                            'bg-slate-100 text-slate-500 border-slate-200'
-                          }`}>
+                              order.status === OrderStatus.CANCELLED ? 'bg-red-50 text-red-700 border-red-100' :
+                                'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}>
                             {order.status}
                           </span>
                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">
@@ -228,7 +283,7 @@ const Orders: React.FC = () => {
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-[10px]">
-                              <i className="fa-solid fa-user-gear"></i>
+                            <i className="fa-solid fa-user-gear"></i>
                           </div>
                           <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{order.techName}</span>
                         </div>
@@ -246,7 +301,7 @@ const Orders: React.FC = () => {
                       <td className="px-6 py-5 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {isAdmin && (
-                            <button 
+                            <button
                               onClick={() => setOrderToDelete(order.id)}
                               className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
                               title="Excluir OS"
@@ -254,7 +309,7 @@ const Orders: React.FC = () => {
                               <i className="fa-solid fa-trash-can"></i>
                             </button>
                           )}
-                          <Link 
+                          <Link
                             to={`/ordens/${order.id}`}
                             className="inline-flex items-center gap-2 bg-slate-100/80 hover:bg-blue-600 hover:text-white text-slate-500 px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-sm active:scale-95"
                           >
@@ -283,7 +338,7 @@ const Orders: React.FC = () => {
 
         {filteredOrders.length > 10 && (
           <div className="p-6 bg-slate-50/30 border-t border-slate-100">
-            <button 
+            <button
               onClick={() => setShowAllOrders(!showAllOrders)}
               className="w-full py-5 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-white transition-all font-black text-[10px] uppercase tracking-widest"
             >
@@ -307,45 +362,45 @@ const Orders: React.FC = () => {
                 <i className="fa-solid fa-xmark text-xl"></i>
               </button>
             </div>
-            
+
             <form onSubmit={handleCreate} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div className="sm:col-span-2">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Cliente Final</label>
-                  <select 
+                  <select
                     required
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs font-black uppercase tracking-tight"
                     value={newOrder.customerId}
-                    onChange={e => setNewOrder({...newOrder, customerId: e.target.value})}
+                    onChange={e => setNewOrder({ ...newOrder, customerId: e.target.value })}
                   >
                     <option value="">Selecione o Cliente</option>
-                    {data.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                
+
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Natureza do Atendimento</label>
-                  <select 
+                  <select
                     required
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs font-black uppercase tracking-tight"
                     value={newOrder.type}
-                    onChange={e => setNewOrder({...newOrder, type: e.target.value})}
+                    onChange={e => setNewOrder({ ...newOrder, type: e.target.value })}
                   >
-                    {settings.orderTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                    {settings?.orderTypes?.map((t: string) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Responsável</label>
-                  <select 
+                  <select
                     required
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs font-black uppercase tracking-tight"
                     value={newOrder.techId}
-                    onChange={e => setNewOrder({...newOrder, techId: e.target.value})}
+                    onChange={e => setNewOrder({ ...newOrder, techId: e.target.value })}
                     disabled={currentUser?.role === UserRole.TECH}
                   >
                     <option value="">Definir Técnico</option>
-                    {data.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -353,39 +408,39 @@ const Orders: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Data Abertura</label>
-                  <input 
+                  <input
                     type="datetime-local"
                     required
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs font-black text-slate-700"
                     value={newOrder.createdAt}
-                    onChange={e => setNewOrder({...newOrder, createdAt: e.target.value})}
+                    onChange={e => setNewOrder({ ...newOrder, createdAt: e.target.value })}
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Agendamento (Prazo)</label>
-                  <input 
+                  <input
                     type="datetime-local"
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs font-black text-blue-600"
                     value={newOrder.scheduledDate}
-                    onChange={e => setNewOrder({...newOrder, scheduledDate: e.target.value})}
+                    onChange={e => setNewOrder({ ...newOrder, scheduledDate: e.target.value })}
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Relato do Cliente / Diagnóstico Inicial</label>
-                <textarea 
+                <textarea
                   required
                   placeholder="Descreva o que foi solicitado..."
                   rows={3}
                   className="w-full px-5 py-4 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm font-medium leading-relaxed bg-slate-50/50"
                   value={newOrder.description}
-                  onChange={e => setNewOrder({...newOrder, description: e.target.value})}
+                  onChange={e => setNewOrder({ ...newOrder, description: e.target.value })}
                 />
               </div>
 
               {/* Anexos condicional ao Módulo */}
-              {settings.enableAttachments && (
+              {settings?.enableAttachments && (
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Documentação Prévia (Opcional)</label>
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -398,15 +453,15 @@ const Orders: React.FC = () => {
                       </div>
                     ))}
                   </div>
-                  <input 
-                    type="file" 
+                  <input
+                    type="file"
                     ref={fileInputRef}
-                    multiple 
-                    className="hidden" 
+                    multiple
+                    className="hidden"
                     onChange={handleFileSelect}
                     accept="image/*,.pdf,.doc,.docx"
                   />
-                  <button 
+                  <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full py-5 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-300 transition-all flex flex-col items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest bg-slate-50"
@@ -418,14 +473,14 @@ const Orders: React.FC = () => {
               )}
 
               <div className="pt-6 flex gap-3 sticky bottom-0 bg-white pb-2">
-                <button 
+                <button
                   type="button"
                   onClick={() => setModalOpen(false)}
                   className="flex-1 py-4 border border-slate-200 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-[0.98]"
                 >

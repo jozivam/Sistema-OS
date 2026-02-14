@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { storageService } from '../services/storageService';
 import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
 import { Company, User, UserRole, AppState, CompanyPlan, CompanyPayment, SystemSettings } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
 import { maskDocument, maskPhone } from '../utils/format';
@@ -10,7 +10,12 @@ import { maskDocument, maskPhone } from '../utils/format';
 const CompanyManagement: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [data, setData] = useState<AppState>(storageService.getData());
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [companyUsers, setCompanyUsers] = useState<User[]>([]);
+  const [companyPayments, setCompanyPayments] = useState<CompanyPayment[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [isModalOpen, setModalOpen] = useState(false);
   const [isCompanyModalOpen, setCompanyModalOpen] = useState(false);
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -19,11 +24,6 @@ const CompanyManagement: React.FC = () => {
   const [paymentToDelete, setPaymentToDelete] = useState<CompanyPayment | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [extendDays, setExtendDays] = useState<number>(0);
-
-  const company = data.companies.find(c => c.id === id);
-  const companyUsers = data.users.filter(u => u.companyId === id);
-  const companyPayments = (data.companyPayments || []).filter(p => p.companyId === id)
-    .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
 
   const [userFormData, setUserFormData] = useState({
     name: '',
@@ -61,6 +61,57 @@ const CompanyManagement: React.FC = () => {
     paymentDate: new Date().toISOString().slice(0, 10)
   });
 
+  const loadData = async () => {
+    if (!id) return;
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      setCurrentUser(user);
+
+      const [companyData, usersData, paymentsData] = await Promise.all([
+        dbService.getCompany(id),
+        dbService.getUsers(id),
+        dbService.getCompanyPayments(id)
+      ]);
+
+      if (companyData) {
+        setCompany(companyData);
+        setCompanyFormData({
+          tradeName: companyData.tradeName || companyData.name,
+          corporateName: companyData.corporateName || companyData.name,
+          document: companyData.document,
+          email: companyData.email || '',
+          phone: companyData.phone || '',
+          address: companyData.address || '',
+          city: companyData.city || '',
+          plan: companyData.plan,
+          monthlyFee: companyData.monthlyFee,
+          status: companyData.status,
+          expiresAt: companyData.expiresAt ? companyData.expiresAt.slice(0, 10) : '',
+          createdAt: companyData.createdAt ? companyData.createdAt.slice(0, 10) : new Date().toISOString().split('T')[0],
+          settings: {
+            enableAI: companyData.settings?.enableAI ?? false,
+            enableAttachments: companyData.settings?.enableAttachments ?? false,
+            enableChat: companyData.settings?.enableChat ?? false,
+            enableHistory: companyData.settings?.enableHistory ?? false,
+            orderTypes: companyData.settings?.orderTypes || []
+          }
+        });
+        setPaymentFormData(prev => ({ ...prev, amount: companyData.monthlyFee }));
+      }
+      setCompanyUsers(usersData);
+      setCompanyPayments(paymentsData);
+    } catch (error) {
+      console.error("Erro ao carregar dados da empresa:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [id]);
+
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
@@ -68,32 +119,13 @@ const CompanyManagement: React.FC = () => {
     }
   }, [toast]);
 
-  useEffect(() => {
-    if (company) {
-      setCompanyFormData({
-        tradeName: company.tradeName || company.name,
-        corporateName: company.corporateName || company.name,
-        document: company.document,
-        email: company.email || '',
-        phone: company.phone || '',
-        address: company.address || '',
-        city: company.city || '',
-        plan: company.plan,
-        monthlyFee: company.monthlyFee,
-        status: company.status,
-        expiresAt: company.expiresAt ? company.expiresAt.slice(0, 10) : '',
-        createdAt: company.createdAt ? company.createdAt.slice(0, 10) : new Date().toISOString().split('T')[0],
-        settings: {
-          enableAI: company.settings?.enableAI ?? false,
-          enableAttachments: company.settings?.enableAttachments ?? false,
-          enableChat: company.settings?.enableChat ?? false,
-          enableHistory: company.settings?.enableHistory ?? false,
-          orderTypes: company.settings?.orderTypes || data.settings.orderTypes
-        }
-      });
-      setPaymentFormData(prev => ({ ...prev, amount: company.monthlyFee }));
-    }
-  }, [company, data.settings.orderTypes]);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
 
   if (!company) {
     return (
@@ -110,7 +142,7 @@ const CompanyManagement: React.FC = () => {
       setUserFormData({
         name: user.name,
         email: user.email,
-        password: user.password || '',
+        password: '', // Hidden or not available
         role: user.role,
         phone: user.phone || '',
         city: user.city || ''
@@ -129,29 +161,32 @@ const CompanyManagement: React.FC = () => {
     setModalOpen(true);
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    let updatedUsers = [...data.users];
 
-    if (editingUser) {
-      updatedUsers = updatedUsers.map(u =>
-        u.id === editingUser.id ? { ...u, ...userFormData } : u
-      );
-      setToast({ message: 'Usuário atualizado com sucesso!', type: 'success' });
-    } else {
-      const newUser: User = {
-        id: Date.now().toString(),
-        companyId: company.id,
-        ...userFormData
-      };
-      updatedUsers.push(newUser);
-      setToast({ message: 'Novo usuário criado!', type: 'success' });
+    try {
+      if (editingUser) {
+        const updates: any = { ...userFormData };
+        if (!updates.password) delete updates.password;
+
+        await dbService.updateUser(editingUser.id, updates);
+        setCompanyUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updates } : u));
+        setToast({ message: 'Usuário atualizado com sucesso!', type: 'success' });
+      } else {
+        const newUser = await dbService.createUser({
+          ...userFormData,
+          companyId: company.id,
+          isBlocked: false
+        });
+        setCompanyUsers(prev => [...prev, newUser]);
+        setToast({ message: 'Novo usuário criado!', type: 'success' });
+      }
+
+      setModalOpen(false);
+    } catch (error) {
+      console.error("Erro ao salvar usuário:", error);
+      setToast({ message: 'Erro ao salvar usuário.', type: 'error' });
     }
-
-    const updatedData = { ...data, users: updatedUsers };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setModalOpen(false);
   };
 
   const handlePlanChange = (newPlan: CompanyPlan) => {
@@ -201,8 +236,10 @@ const CompanyManagement: React.FC = () => {
     setToast({ message: `Prazo estendido em ${extendDays} dias!`, type: 'success' });
   };
 
-  const handleRegisterPayment = (e: React.FormEvent) => {
+  const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!company) return;
+
     let monthsToAdd = 0;
     switch (company.plan) {
       case CompanyPlan.MENSAL: monthsToAdd = 1; break;
@@ -217,93 +254,76 @@ const CompanyManagement: React.FC = () => {
     currentExpiry.setMonth(currentExpiry.getMonth() + monthsToAdd);
     const newExpiresAt = currentExpiry.toISOString();
 
-    const newPayment: CompanyPayment = {
-      id: `pay-${Date.now()}`,
-      companyId: company.id,
-      amount: paymentFormData.amount,
-      paymentDate: paymentFormData.paymentDate,
-      planReference: company.plan,
-      expiresAtAfter: newExpiresAt
-    };
+    try {
+      const newPayment = await dbService.createCompanyPayment({
+        companyId: company.id,
+        amount: paymentFormData.amount,
+        paymentDate: paymentFormData.paymentDate,
+        planReference: company.plan,
+        expiresAtAfter: newExpiresAt
+      });
 
-    const updatedCompanies = data.companies.map(c =>
-      c.id === company.id ? { ...c, expiresAt: newExpiresAt, status: 'ACTIVE' } as Company : c
-    );
+      await dbService.updateCompany(company.id, { expiresAt: newExpiresAt, status: 'ACTIVE' } as Partial<Company>);
 
-    const updatedData = {
-      ...data,
-      companies: updatedCompanies,
-      companyPayments: [...(data.companyPayments || []), newPayment]
-    };
+      setCompany({ ...company, expiresAt: newExpiresAt, status: 'ACTIVE' } as Company);
+      setCompanyPayments(prev => [newPayment, ...prev]);
 
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setPaymentModalOpen(false);
-    setToast({ message: 'Pagamento registrado! Vencimento estendido.', type: 'success' });
+      setPaymentModalOpen(false);
+      setToast({ message: 'Pagamento registrado! Vencimento estendido.', type: 'success' });
+    } catch (error) {
+      console.error("Erro ao registrar pagamento:", error);
+      setToast({ message: 'Erro ao registrar pagamento.', type: 'error' });
+    }
   };
 
-  const confirmDeletePayment = () => {
+  const confirmDeletePayment = async () => {
     if (!paymentToDelete) return;
-    const updatedPayments = (data.companyPayments || []).filter(p => p.id !== paymentToDelete.id);
-    const updatedData = { ...data, companyPayments: updatedPayments };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setPaymentToDelete(null);
-    setToast({ message: 'Registro de pagamento removido.', type: 'success' });
+
+    try {
+      await dbService.deleteCompanyPayment(paymentToDelete.id);
+      setCompanyPayments(prev => prev.filter(p => p.id !== paymentToDelete.id));
+      setPaymentToDelete(null);
+      setToast({ message: 'Registro de pagamento removido.', type: 'success' });
+    } catch (error) {
+      console.error("Erro ao excluir pagamento:", error);
+      setToast({ message: 'Erro ao excluir pagamento.', type: 'error' });
+    }
   };
 
   const handleSaveCompany = async (e?: React.FormEvent) => {
     if (e && e.preventDefault) e.preventDefault();
-
-    if (!company) {
-      setToast({ message: 'Erro: Empresa não encontrada para salvar.', type: 'error' });
-      return;
-    }
+    if (!company) return;
 
     try {
-      const updatedCompanies = data.companies.map(c =>
-        c.id === company.id ? {
-          ...c,
-          ...companyFormData,
-          name: companyFormData.tradeName,
-          expiresAt: companyFormData.expiresAt ? new Date(companyFormData.expiresAt + 'T12:00:00').toISOString() : undefined,
-          createdAt: companyFormData.createdAt ? new Date(companyFormData.createdAt + 'T12:00:00').toISOString() : company.createdAt
-        } : c
-      );
+      const updates = {
+        ...companyFormData,
+        name: companyFormData.tradeName,
+        expiresAt: companyFormData.expiresAt ? new Date(companyFormData.expiresAt + 'T12:00:00').toISOString() : undefined,
+        createdAt: companyFormData.createdAt ? new Date(companyFormData.createdAt + 'T12:00:00').toISOString() : company.createdAt
+      };
 
-      const updatedData = { ...data, companies: updatedCompanies };
-      storageService.saveData(updatedData);
-      setData(updatedData);
+      await dbService.updateCompany(company.id, updates);
 
-      // Sincronizar com Supabase
-      try {
-        await dbService.updateCompany(company.id, {
-          ...companyFormData,
-          name: companyFormData.tradeName,
-          expiresAt: companyFormData.expiresAt ? new Date(companyFormData.expiresAt + 'T12:00:00').toISOString() : undefined,
-          createdAt: companyFormData.createdAt ? new Date(companyFormData.createdAt + 'T12:00:00').toISOString() : company.createdAt
-        });
-      } catch (dbErr) {
-        console.warn('Falha na sincronização Supabase (Modo Offline):', dbErr);
-      }
-
+      setCompany({ ...company, ...updates } as Company);
       setCompanyModalOpen(false);
       setToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
-      console.log('Dados da empresa salvos:', updatedData);
     } catch (err) {
       console.error('Erro ao salvar empresa:', err);
       setToast({ message: 'Erro técnico ao salvar dados.', type: 'error' });
     }
   };
 
-  const confirmDeleteUser = () => {
+  const confirmDeleteUser = async () => {
     if (!userToDelete) return;
-    const updatedUsers = data.users.filter(u => u.id !== userToDelete.id);
-    const updatedData = { ...data, users: updatedUsers };
-    storageService.saveData(updatedData);
-    setData(updatedData);
-    setUserToDelete(null);
-    setToast({ message: 'Usuário removido.', type: 'error' });
+    try {
+      await dbService.deleteUser(userToDelete.id);
+      setCompanyUsers(prev => prev.filter(u => u.id !== userToDelete.id));
+      setUserToDelete(null);
+      setToast({ message: 'Usuário removido.', type: 'error' });
+    } catch (error) {
+      console.error("Erro ao excluir usuário:", error);
+      setToast({ message: 'Erro ao excluir usuário.', type: 'error' });
+    }
   };
 
   return (

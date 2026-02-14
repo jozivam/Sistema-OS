@@ -1,108 +1,144 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { storageService } from '../services/storageService';
-import { OrderStatus, ServiceOrder, UserRole, OrderPost, OrderAttachment } from '../types';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { OrderStatus, ServiceOrder, UserRole, OrderPost, OrderAttachment, User, Company } from '../types';
 import { generateProfessionalReport } from '../services/geminiService';
 import ConfirmModal from '../components/ConfirmModal';
 
 const OrderDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [data, setData] = useState(storageService.getData());
+
+  const [order, setOrder] = useState<ServiceOrder | null>(null);
+  const [customer, setCustomer] = useState<any>(null); // Usando any por enquanto ou Customer
+  const [users, setUsers] = useState<User[]>([]);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingDesc, setIsSavingDesc] = useState(false);
   const [isSavingReport, setIsSavingReport] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [attachmentToDelete, setAttachmentToDelete] = useState<string | null>(null);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
-  
-  const order = data.orders.find(o => o.id === id);
-  const customer = data.customers.find(c => c.id === order?.customerId);
-  const user = data.currentUser;
-  const company = data.companies.find(c => c.id === user?.companyId);
-  const settings = company?.settings || data.settings;
-  
+
   const [isUploading, setIsUploading] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
-  
+
   const [editedDescription, setEditedDescription] = useState('');
   const [editedHistory, setEditedHistory] = useState('');
   const [editedAIReport, setEditedAIReport] = useState('');
   const [editedScheduledDate, setEditedScheduledDate] = useState('');
-  const [editedType, setEditedType] = useState<string>(settings.orderTypes[0]);
+  const [editedType, setEditedType] = useState<string>('');
   const [editedTechId, setEditedTechId] = useState('');
 
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
-  const isAdmin = user?.role === UserRole.ADMIN;
+  const loadOrderData = async () => {
+    if (!id) return;
+    try {
+      const fetchedUser = await authService.getCurrentUser();
+      setCurrentUser(fetchedUser);
 
-  useEffect(() => {
-    if (order) {
-      setEditedDescription(order.description || '');
-      setEditedHistory(order.dailyHistory || '');
-      setEditedAIReport(order.aiReport || '');
-      if (order.scheduledDate) {
-        const date = new Date(order.scheduledDate);
-        date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-        setEditedScheduledDate(date.toISOString().slice(0, 16));
-      } else {
-        setEditedScheduledDate('');
+      const fetchedOrder = await dbService.getOrder(id);
+      if (fetchedOrder) {
+        setOrder(fetchedOrder);
+        setEditedDescription(fetchedOrder.description || '');
+        setEditedHistory(fetchedOrder.dailyHistory || '');
+        setEditedAIReport(fetchedOrder.aiReport || '');
+
+        if (fetchedOrder.scheduledDate) {
+          const date = new Date(fetchedOrder.scheduledDate);
+          date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+          setEditedScheduledDate(date.toISOString().slice(0, 16));
+        }
+        setEditedType(fetchedOrder.type);
+        setEditedTechId(fetchedOrder.techId || '');
+
+        if (fetchedUser?.companyId) {
+          const [fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
+            dbService.getCustomers(fetchedUser.companyId),
+            dbService.getUsers(fetchedUser.companyId),
+            dbService.getCompany(fetchedUser.companyId)
+          ]);
+
+          setUsers(fetchedUsers);
+          setCompany(fetchedCompany);
+
+          const foundCustomer = fetchedCustomers.find(c => c.id === fetchedOrder.customerId);
+          setCustomer(foundCustomer);
+        }
       }
-      setEditedType(order.type);
-      setEditedTechId(order.techId || '');
+    } catch (error) {
+      console.error("Erro ao carregar detalhes da OS:", error);
+    } finally {
+      setLoading(false);
     }
-  }, [order?.id]);
+  };
 
   useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
+    loadOrderData();
+  }, [id]);
+
+  const isAdmin = currentUser?.role === UserRole.ADMIN;
+  const settings = company?.settings || (window as any).initialData?.settings; // Fallback se necessário
+
+  if (loading) return (
+    <div className="flex items-center justify-center p-24">
+      <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+    </div>
+  );
 
   if (!order) return <div className="text-center py-20 font-black text-slate-400 uppercase">Atendimento não encontrado.</div>;
 
   const isLocked = order.status === OrderStatus.FINISHED || order.status === OrderStatus.CANCELLED;
 
-  const persistChanges = (updatedOrder: ServiceOrder) => {
-    setData(prevData => {
-      const updatedOrders = prevData.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
-      const nextData = { ...prevData, orders: updatedOrders };
-      storageService.saveData(nextData);
-      return nextData;
-    });
+  const persistChanges = async (updatedOrder: ServiceOrder) => {
+    try {
+      await dbService.updateOrder(updatedOrder.id, updatedOrder);
+      setOrder(updatedOrder);
+    } catch (error) {
+      console.error("Erro ao persistir mudanças na OS:", error);
+      setToast({ message: 'Erro ao salvar mudanças.', type: 'error' });
+    }
   };
 
-  const handleSave = (type: 'all' | 'desc' | 'report' | 'ai' = 'all') => {
+  const handleSave = async (type: 'all' | 'desc' | 'report' | 'ai' = 'all') => {
     if (isLocked) return;
-    
+
     if (type === 'desc') setIsSavingDesc(true);
     else if (type === 'report') setIsSavingReport(true);
     else if (type === 'ai') setIsSavingReport(true);
     else setIsSaving(true);
 
-    const selectedTech = data.users.find(u => u.id === editedTechId);
-    
-    const updatedOrder: ServiceOrder = { 
-      ...order, 
-      description: editedDescription, 
-      dailyHistory: editedHistory,
-      aiReport: editedAIReport,
-      scheduledDate: editedScheduledDate ? new Date(editedScheduledDate).toISOString() : order.scheduledDate, 
-      type: editedType, 
-      techId: editedTechId, 
-      techName: selectedTech?.name || order.techName 
-    };
+    try {
+      const selectedTech = users.find(u => u.id === editedTechId);
 
-    persistChanges(updatedOrder);
-    setTimeout(() => {
+      const updatedOrder: ServiceOrder = {
+        ...order,
+        description: editedDescription,
+        dailyHistory: editedHistory,
+        aiReport: editedAIReport,
+        scheduledDate: editedScheduledDate ? new Date(editedScheduledDate).toISOString() : order.scheduledDate,
+        type: editedType,
+        techId: editedTechId,
+        techName: selectedTech?.name || order.techName
+      };
+
+      await dbService.updateOrder(order.id, updatedOrder);
+      setOrder(updatedOrder);
+      setToast({ message: 'Dados da OS salvos!', type: 'success' });
+    } catch (error) {
+      console.error("Erro ao salvar OS:", error);
+      setToast({ message: 'Erro ao salvar OS.', type: 'error' });
+    } finally {
       setIsSaving(false);
       setIsSavingDesc(false);
       setIsSavingReport(false);
-      setToast({ message: 'Dados da OS salvos!', type: 'success' });
-    }, 500);
+    }
   };
 
   const handleGenerateAI = async () => {
@@ -112,29 +148,36 @@ const OrderDetails: React.FC = () => {
     }
 
     setIsGeneratingAI(true);
-    const report = await generateProfessionalReport(editedHistory);
-    setEditedAIReport(report);
-    setIsGeneratingAI(false);
-    setToast({ message: 'Relatório profissional gerado pela IA!', type: 'success' });
+    try {
+      const report = await generateProfessionalReport(editedHistory);
+      setEditedAIReport(report);
+      setToast({ message: 'Relatório profissional gerado pela IA!', type: 'success' });
+    } catch (error) {
+      console.error("Erro ao gerar relatório IA:", error);
+      setToast({ message: 'Erro ao gerar relatório IA.', type: 'error' });
+    } finally {
+      setIsGeneratingAI(false);
+    }
   };
 
-  const handleStatusChange = (newStatus: OrderStatus) => {
-    const updatedOrder: ServiceOrder = { 
-      ...order, 
+  const handleStatusChange = async (newStatus: OrderStatus) => {
+    const updatedOrder: ServiceOrder = {
+      ...order,
       status: newStatus,
-      finishedAt: newStatus === OrderStatus.FINISHED ? new Date().toISOString() : undefined 
+      finishedAt: newStatus === OrderStatus.FINISHED ? new Date().toISOString() : undefined
     };
-    persistChanges(updatedOrder);
-    
+
+    await persistChanges(updatedOrder);
+
     let message = `Status alterado para ${newStatus}`;
     if (newStatus === OrderStatus.OPEN) message = 'Ordem reaberta!';
     if (newStatus === OrderStatus.IN_PROGRESS && order.status === OrderStatus.PAUSED) message = 'Serviço retomado!';
     if (newStatus === OrderStatus.PAUSED) message = 'Serviço pausado!';
-    
+
     setToast({ message, type: 'success' });
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || isLocked) return;
     setIsUploading(true);
@@ -144,7 +187,7 @@ const OrderDetails: React.FC = () => {
 
     Array.from(files).forEach((file: File) => {
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         const base64 = event.target?.result as string;
         newAttachments.push({
           id: Math.random().toString(36).substr(2, 9),
@@ -157,7 +200,8 @@ const OrderDetails: React.FC = () => {
         processed++;
 
         if (processed === files.length) {
-          persistChanges({ ...order, attachments: [...(order.attachments || []), ...newAttachments] });
+          const updatedOrder = { ...order, attachments: [...(order.attachments || []), ...newAttachments] };
+          await persistChanges(updatedOrder);
           setIsUploading(false);
           setToast({ message: 'Arquivos anexados!', type: 'success' });
           if (fileInputRef.current) fileInputRef.current.value = '';
@@ -172,11 +216,11 @@ const OrderDetails: React.FC = () => {
     setAttachmentToDelete(attachmentId);
   };
 
-  const confirmDeleteAttachment = () => {
+  const confirmDeleteAttachment = async () => {
     if (!attachmentToDelete || !order) return;
     const currentAttachments = order.attachments || [];
     const updatedAttachments = currentAttachments.filter(a => a.id !== attachmentToDelete);
-    persistChanges({ ...order, attachments: updatedAttachments });
+    await persistChanges({ ...order, attachments: updatedAttachments });
     setAttachmentToDelete(null);
     setToast({ message: 'Arquivo removido!', type: 'success' });
   };
@@ -198,11 +242,11 @@ const OrderDetails: React.FC = () => {
     } catch (error) { console.error(error); }
   };
 
-  const handleAddPost = (e?: React.FormEvent) => {
+  const handleAddPost = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newPostContent.trim() || isLocked) return;
-    const newPost: OrderPost = { id: Date.now().toString(), userId: user?.id || '', userName: user?.name || 'Sistema', content: newPostContent, createdAt: new Date().toISOString() };
-    persistChanges({ ...order, posts: [newPost, ...(order.posts || [])] });
+    const newPost: OrderPost = { id: Date.now().toString(), userId: currentUser?.id || '', userName: currentUser?.name || 'Sistema', content: newPostContent, createdAt: new Date().toISOString() };
+    await persistChanges({ ...order, posts: [newPost, ...(order.posts || [])] });
     setNewPostContent('');
   };
 
@@ -219,6 +263,8 @@ const OrderDetails: React.FC = () => {
 
   const attachments = order.attachments || [];
   const visibleAttachments = showAllAttachments ? attachments : attachments.slice(0, 5);
+
+  const user = currentUser; // Alias para compatibilidade com o JSX abaixo
 
   return (
     <div className="relative pb-24">
@@ -246,14 +292,13 @@ const OrderDetails: React.FC = () => {
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase tracking-tight leading-none mb-1">ATENDIMENTO #{order.id.slice(-4)}</h1>
-            <span className={`text-[10px] px-3 py-1 rounded-lg font-black uppercase border shadow-sm ${
-              order.status === OrderStatus.FINISHED ? 'bg-green-100 text-green-700 border-green-200' : 
-              order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-white border-orange-600' :
-              'bg-blue-600 text-white border-blue-700'
-            }`}>{order.status}</span>
+            <span className={`text-[10px] px-3 py-1 rounded-lg font-black uppercase border shadow-sm ${order.status === OrderStatus.FINISHED ? 'bg-green-100 text-green-700 border-green-200' :
+                order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-white border-orange-600' :
+                  'bg-blue-600 text-white border-blue-700'
+              }`}>{order.status}</span>
           </div>
         </div>
-        
+
         <div className="flex flex-wrap gap-2">
           {!isLocked ? (
             <>
@@ -267,10 +312,10 @@ const OrderDetails: React.FC = () => {
               )}
               {order.status === OrderStatus.IN_PROGRESS && (
                 <button onClick={() => handleStatusChange(OrderStatus.PAUSED)} className="bg-orange-500 text-white px-6 py-3 rounded-xl font-black text-xs shadow-lg active:scale-95 transition-all uppercase tracking-widest">
-                   <i className="fa-solid fa-pause mr-2"></i> PAUSAR
+                  <i className="fa-solid fa-pause mr-2"></i> PAUSAR
                 </button>
               )}
-              
+
               <button onClick={() => handleSave()} disabled={isSaving} className="bg-white border-2 border-slate-200 text-slate-600 px-6 py-3 rounded-xl font-black text-xs hover:border-blue-500 hover:text-blue-600 transition-all uppercase tracking-widest">
                 {isSaving ? <i className="fa-solid fa-spinner fa-spin mr-2"></i> : <i className="fa-solid fa-floppy-disk mr-2"></i>}
                 SALVAR TUDO
@@ -286,7 +331,7 @@ const OrderDetails: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        
+
         {/* COLUNA 1 - FICHA DO CLIENTE */}
         <div className="order-1 lg:order-2 space-y-6">
           <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
@@ -311,7 +356,7 @@ const OrderDetails: React.FC = () => {
                   <span className="text-[9px] font-black uppercase text-slate-400 block mb-2 tracking-widest">Contato Direto</span>
                   <p className="text-lg font-black text-slate-900 font-mono tracking-wider truncate">{customer?.phone}</p>
                 </div>
-                <button 
+                <button
                   onClick={() => customer && copyToClipboard(customer.phone)}
                   className="w-10 h-10 flex items-center justify-center text-blue-600 hover:bg-blue-100 rounded-xl transition-all shrink-0"
                 >
@@ -324,7 +369,7 @@ const OrderDetails: React.FC = () => {
                   <i className="fa-solid fa-phone text-2xl mb-2 group-hover:scale-110 transition-transform"></i>
                   <span className="text-[9px] font-black uppercase tracking-widest">Ligar</span>
                 </a>
-                <a href={`https://wa.me/${customer?.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-5 bg-green-50 text-green-600 rounded-3xl border border-green-100 hover:bg-green-100 transition-all group active:scale-95 shadow-sm">
+                <a href={`https://wa.me/${customer?.phone?.replace(/\D/g, '') || ''}`} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-5 bg-green-50 text-green-600 rounded-3xl border border-green-100 hover:bg-green-100 transition-all group active:scale-95 shadow-sm">
                   <i className="fa-brands fa-whatsapp text-3xl mb-1 group-hover:scale-110 transition-transform"></i>
                   <span className="text-[9px] font-black uppercase tracking-widest">WhatsApp</span>
                 </a>
@@ -333,22 +378,22 @@ const OrderDetails: React.FC = () => {
               <div className="p-6 bg-blue-600 text-white rounded-3xl shadow-xl shadow-blue-500/20">
                 <span className="text-[9px] font-black uppercase text-blue-200 block mb-6 tracking-widest">Alocação Técnica</span>
                 <div className="space-y-4">
-                   <div className="flex justify-between items-center text-[10px] font-black border-b border-blue-500/50 pb-3">
-                      <span className="text-blue-200 uppercase tracking-tight">Responsável:</span>
-                      <span className="uppercase">{order.techName}</span>
-                   </div>
-                   <div className="flex justify-between items-center text-[10px] font-black border-b border-blue-500/50 pb-3">
-                      <span className="text-blue-200 uppercase tracking-tight">Natureza:</span>
-                      <span className="uppercase">{order.type}</span>
-                   </div>
-                   <div className="flex justify-between items-center text-[10px] font-black border-b border-blue-500/50 pb-3">
-                      <span className="text-blue-200 uppercase tracking-tight">Abertura:</span>
-                      <span className="uppercase">{new Date(order.createdAt).toLocaleDateString('pt-BR')}</span>
-                   </div>
-                   <div className="flex justify-between items-center text-[10px] font-black">
-                      <span className="text-blue-200 uppercase tracking-tight">Prazo:</span>
-                      <span className="uppercase truncate max-w-[120px] text-right">{order.scheduledDate ? new Date(order.scheduledDate).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'A definir'}</span>
-                   </div>
+                  <div className="flex justify-between items-center text-[10px] font-black border-b border-blue-500/50 pb-3">
+                    <span className="text-blue-200 uppercase tracking-tight">Responsável:</span>
+                    <span className="uppercase">{order.techName}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-black border-b border-blue-500/50 pb-3">
+                    <span className="text-blue-200 uppercase tracking-tight">Natureza:</span>
+                    <span className="uppercase">{order.type}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-black border-b border-blue-500/50 pb-3">
+                    <span className="text-blue-200 uppercase tracking-tight">Abertura:</span>
+                    <span className="uppercase">{new Date(order.createdAt).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-black">
+                    <span className="text-blue-200 uppercase tracking-tight">Prazo:</span>
+                    <span className="uppercase truncate max-w-[120px] text-right">{order.scheduledDate ? new Date(order.scheduledDate).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'A definir'}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -366,36 +411,36 @@ const OrderDetails: React.FC = () => {
               <div className="space-y-6 relative z-10">
                 <div>
                   <label className="block text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2 ml-1">Responsável</label>
-                  <select 
-                    disabled={isLocked} 
-                    className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
-                    value={editedTechId} 
+                  <select
+                    disabled={isLocked}
+                    className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    value={editedTechId}
                     onChange={e => setEditedTechId(e.target.value)}
                   >
-                    {data.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2 ml-1">Natureza</label>
-                  <select 
-                    disabled={isLocked} 
-                    className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
-                    value={editedType} 
+                  <select
+                    disabled={isLocked}
+                    className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    value={editedType}
                     onChange={e => setEditedType(e.target.value)}
                   >
-                    {settings.orderTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    {settings?.orderTypes?.map((t: string) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2 ml-1">Prazo</label>
-                  <input 
-                    type="datetime-local" 
-                    disabled={isLocked} 
-                    className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-xs font-black text-blue-400 uppercase outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
-                    value={editedScheduledDate} 
-                    onChange={e => setEditedScheduledDate(e.target.value)} 
+                  <input
+                    type="datetime-local"
+                    disabled={isLocked}
+                    className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-xs font-black text-blue-400 uppercase outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    value={editedScheduledDate}
+                    onChange={e => setEditedScheduledDate(e.target.value)}
                   />
                 </div>
               </div>
@@ -405,9 +450,9 @@ const OrderDetails: React.FC = () => {
 
         {/* COLUNA 2 - CONTEÚDO TÉCNICO */}
         <div className="order-2 lg:order-1 lg:col-span-2 space-y-6">
-          
+
           {/* Anexos Grid - Condicional ao Módulo Habilitado */}
-          {settings.enableAttachments && (
+          {settings?.enableAttachments && (
             <div className="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
               <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-3 uppercase tracking-tighter">
@@ -430,29 +475,29 @@ const OrderDetails: React.FC = () => {
                   )}
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-6">
-                {visibleAttachments.map(att => (
-                   <div key={att.id} className="flex flex-col gap-2 group animate-in fade-in zoom-in duration-300">
-                      <div className="aspect-square rounded-2xl bg-slate-50 border border-slate-100 overflow-hidden relative shadow-sm flex items-center justify-center transition-all group-hover:shadow-md">
-                          {att.mimeType.startsWith('image/') ? (
-                            <img src={att.data} className="w-full h-full object-cover" alt={att.name} />
-                          ) : (
-                            <i className={`fa-solid ${getFileIcon(att.mimeType)} text-4xl`}></i>
-                          )}
-                          <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 transition-all">
-                             <a href={att.data} download={att.name} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 shadow-lg">
-                               <i className="fa-solid fa-download"></i>
-                             </a>
-                             {!isLocked && (
-                               <button onClick={() => handleDeleteAttachment(att.id)} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-red-500 shadow-lg">
-                                 <i className="fa-solid fa-trash-can"></i>
-                               </button>
-                             )}
-                          </div>
+                {visibleAttachments.map((att: OrderAttachment) => (
+                  <div key={att.id} className="flex flex-col gap-2 group animate-in fade-in zoom-in duration-300">
+                    <div className="aspect-square rounded-2xl bg-slate-50 border border-slate-100 overflow-hidden relative shadow-sm flex items-center justify-center transition-all group-hover:shadow-md">
+                      {att.mimeType.startsWith('image/') ? (
+                        <img src={att.data} className="w-full h-full object-cover" alt={att.name} />
+                      ) : (
+                        <i className={`fa-solid ${getFileIcon(att.mimeType)} text-4xl`}></i>
+                      )}
+                      <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 transition-all">
+                        <a href={att.data} download={att.name} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 shadow-lg">
+                          <i className="fa-solid fa-download"></i>
+                        </a>
+                        {!isLocked && (
+                          <button onClick={() => handleDeleteAttachment(att.id)} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-red-500 shadow-lg">
+                            <i className="fa-solid fa-trash-can"></i>
+                          </button>
+                        )}
                       </div>
-                      <p className="text-[9px] font-black text-slate-400 truncate text-center uppercase tracking-widest">{att.name}</p>
-                   </div>
+                    </div>
+                    <p className="text-[9px] font-black text-slate-400 truncate text-center uppercase tracking-widest">{att.name}</p>
+                  </div>
                 ))}
                 {attachments.length === 0 && (
                   <div className="col-span-full py-16 border-2 border-dashed border-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-slate-400">
@@ -470,7 +515,7 @@ const OrderDetails: React.FC = () => {
               <i className="fa-solid fa-file-lines text-blue-600"></i> Descrição Técnica do Pedido
             </h2>
             <div className="space-y-4">
-              <textarea 
+              <textarea
                 disabled={isLocked}
                 className="w-full p-8 bg-slate-50 border border-slate-100 rounded-[2rem] outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium min-h-[150px] resize-none leading-relaxed shadow-inner"
                 placeholder="Descrição do problema ou solicitação do cliente..."
@@ -479,8 +524,8 @@ const OrderDetails: React.FC = () => {
               />
               {!isLocked && (
                 <div className="flex justify-end">
-                  <button 
-                    onClick={() => handleSave('desc')} 
+                  <button
+                    onClick={() => handleSave('desc')}
                     disabled={isSavingDesc}
                     className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
                   >
@@ -497,10 +542,10 @@ const OrderDetails: React.FC = () => {
             <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
               <h2 className="text-xl font-black text-slate-800 flex items-center gap-3 uppercase tracking-tighter">
                 <i className="fa-solid fa-book-open text-orange-600"></i> Relatório de Atividade
-                {settings.enableAI && <span className="bg-orange-100 text-orange-600 text-[8px] px-2 py-0.5 rounded font-black tracking-widest ml-2">IA DISPONÍVEL</span>}
+                {settings?.enableAI && <span className="bg-orange-100 text-orange-600 text-[8px] px-2 py-0.5 rounded font-black tracking-widest ml-2">IA DISPONÍVEL</span>}
               </h2>
-              {settings.enableAI && !isLocked && (
-                <button 
+              {settings?.enableAI && !isLocked && (
+                <button
                   onClick={handleGenerateAI}
                   disabled={isGeneratingAI || !editedHistory.trim()}
                   className="bg-gradient-to-r from-orange-500 to-amber-500 text-white px-6 py-2.5 rounded-full font-black text-[10px] uppercase tracking-widest shadow-lg shadow-orange-500/20 hover:scale-105 transition-all disabled:opacity-50 flex items-center gap-2"
@@ -510,11 +555,11 @@ const OrderDetails: React.FC = () => {
                 </button>
               )}
             </div>
-            
+
             <div className="space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Notas do Técnico (Base para IA)</label>
-                <textarea 
+                <textarea
                   disabled={isLocked}
                   className="w-full p-8 bg-slate-50 border border-slate-100 rounded-[2rem] outline-none focus:ring-2 focus:ring-orange-500 text-sm font-medium min-h-[200px] resize-none leading-relaxed shadow-inner"
                   placeholder="Descreva aqui as atividades realizadas. Estas notas serão usadas pela IA para gerar o relatório final."
@@ -523,10 +568,10 @@ const OrderDetails: React.FC = () => {
                 />
               </div>
 
-              {settings.enableAI && (
+              {settings?.enableAI && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-4">Relatório Profissional (IA)</label>
-                  <textarea 
+                  <textarea
                     disabled={isLocked}
                     className="w-full p-8 bg-white border-2 border-orange-200 rounded-[2rem] outline-none focus:ring-2 focus:ring-orange-500 text-sm font-bold text-slate-700 min-h-[250px] resize-none leading-relaxed shadow-sm"
                     placeholder="O relatório gerado pela IA aparecerá aqui..."
@@ -538,8 +583,8 @@ const OrderDetails: React.FC = () => {
 
               {!isLocked && (
                 <div className="flex justify-end">
-                  <button 
-                    onClick={() => handleSave('report')} 
+                  <button
+                    onClick={() => handleSave('report')}
                     disabled={isSavingReport}
                     className="bg-orange-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-orange-500/20 active:scale-95 transition-all flex items-center gap-2"
                   >
@@ -552,7 +597,7 @@ const OrderDetails: React.FC = () => {
           </div>
 
           {/* Timeline / Chat - Condicional ao Módulo Habilitado */}
-          {settings.enableHistory && (
+          {settings?.enableHistory && (
             <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-6 md:p-10">
               <div className="flex items-center justify-between mb-10">
                 <h2 className="text-xl font-black text-slate-900 flex items-center gap-3 uppercase tracking-tighter">
@@ -562,7 +607,7 @@ const OrderDetails: React.FC = () => {
 
               {!isLocked && (
                 <div className="bg-slate-50 border border-slate-200 rounded-[2rem] p-6 shadow-inner mb-10">
-                  <textarea 
+                  <textarea
                     className="w-full p-5 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium min-h-[100px] resize-none"
                     placeholder="Relate atualizações importantes do serviço..."
                     value={newPostContent}
@@ -578,13 +623,13 @@ const OrderDetails: React.FC = () => {
 
               <div className="relative pl-10 space-y-10">
                 <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-slate-100"></div>
-                {(order.posts || []).map((post) => (
+                {(order.posts || []).map((post: OrderPost) => (
                   <div key={post.id} className="relative group">
                     <div className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-4 border-white shadow-sm z-10 ${post.userId === 'ai-assistant' ? 'bg-indigo-500' : 'bg-blue-600'}`}></div>
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between px-2">
-                         <span className="text-xs font-black text-slate-900 uppercase tracking-tight">{post.userName}</span>
-                         <span className="text-[10px] font-bold text-slate-400">{new Date(post.createdAt).toLocaleTimeString('pt-BR')}</span>
+                        <span className="text-xs font-black text-slate-900 uppercase tracking-tight">{post.userName}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{new Date(post.createdAt).toLocaleTimeString('pt-BR')}</span>
                       </div>
                       <div className={`p-6 rounded-3xl border shadow-sm text-sm font-medium leading-relaxed ${post.userId === 'ai-assistant' ? 'bg-indigo-50 border-indigo-100 text-indigo-900' : 'bg-white border-slate-100 text-slate-700'}`}>
                         {post.content}

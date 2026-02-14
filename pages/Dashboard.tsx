@@ -1,19 +1,54 @@
 
-import React, { useState } from 'react';
-import { storageService } from '../services/storageService';
-import { OrderStatus, UserRole, ServiceOrder } from '../types';
+import React, { useState, useEffect } from 'react';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { OrderStatus, UserRole, ServiceOrder, Customer, User } from '../types';
 import { Link } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
-  const [data] = useState(storageService.getData());
+  const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showExpanded, setShowExpanded] = useState(false);
-  
-  const user = data.currentUser;
-  const isAdmin = user?.role === UserRole.ADMIN;
 
-  const filteredOrders = isAdmin 
-    ? data.orders 
-    : data.orders.filter(o => o.techId === user?.id);
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        setCurrentUser(user);
+
+        if (user?.companyId) {
+          const [fetchedOrders, fetchedCustomers] = await Promise.all([
+            dbService.getOrders(user.companyId),
+            dbService.getCustomers(user.companyId)
+          ]);
+          setOrders(fetchedOrders);
+          setCustomers(fetchedCustomers);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar dashboard:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
+
+  const isAdmin = currentUser?.role === UserRole.ADMIN;
+
+  const filteredOrders = isAdmin
+    ? orders
+    : orders.filter(o => o.techId === currentUser?.id);
 
   // Filtra e ordena as próximas ordens (não finalizadas e não canceladas)
   const allUpcoming = filteredOrders
@@ -29,9 +64,8 @@ const Dashboard: React.FC = () => {
     { label: 'FINALIZADAS (MÊS)', value: filteredOrders.filter(o => o.status === OrderStatus.FINISHED).length, icon: 'fa-check-circle', color: 'bg-green-500', iconColor: 'text-green-600', bgColor: 'bg-green-50' },
   ];
 
-  // Adiciona 'Total Clientes' apenas se for Admin
   if (isAdmin) {
-    stats.push({ label: 'TOTAL CLIENTES', value: data.customers.length, icon: 'fa-users', color: 'bg-indigo-500', iconColor: 'text-indigo-600', bgColor: 'bg-indigo-50' });
+    stats.push({ label: 'TOTAL CLIENTES', value: customers.length, icon: 'fa-users', color: 'bg-indigo-500', iconColor: 'text-indigo-600', bgColor: 'bg-indigo-50' });
   }
 
   const formatMonth = (dateStr: string) => {
@@ -39,21 +73,12 @@ const Dashboard: React.FC = () => {
     return date.toLocaleString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
   };
 
-  const formatDay = (dateStr: string) => {
-    return new Date(dateStr).getDate();
-  };
-
-  const formatTime = (dateStr: string) => {
-    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const formatDateShort = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  };
+  const formatDay = (dateStr: string) => new Date(dateStr).getDate();
+  const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatDateShort = (dateStr: string) => new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
   return (
     <div className="space-y-8 lg:space-y-12 pb-12 animate-in fade-in duration-500">
-      {/* Stats Grid - Apenas para Administradores conforme solicitado */}
       {isAdmin && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
           {stats.map((stat) => (
@@ -71,7 +96,6 @@ const Dashboard: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-        {/* Próximos Atendimentos - Expande para 100% da largura se não for Admin */}
         <div className={`${isAdmin ? 'lg:col-span-8' : 'lg:col-span-12'} bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-6 lg:p-10`}>
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl lg:text-2xl font-black text-slate-900 flex items-center gap-3 uppercase tracking-tight">
@@ -86,18 +110,16 @@ const Dashboard: React.FC = () => {
 
           <div className="space-y-4">
             {upcomingOrders.map(order => {
-              const cust = data.customers.find(c => c.id === order.customerId);
+              const cust = customers.find(c => c.id === order.customerId);
               return (
                 <Link key={order.id} to={`/ordens/${order.id}`} className="group block bg-slate-50/50 hover:bg-white border border-transparent hover:border-blue-100 p-6 rounded-[2rem] transition-all hover:shadow-xl hover:shadow-blue-500/5">
                   <div className="flex items-center gap-6">
-                    {/* Bloco de Data */}
                     <div className="w-16 lg:w-20 h-16 lg:h-20 bg-white rounded-2xl flex flex-col items-center justify-center border border-slate-200 group-hover:bg-blue-600 group-hover:border-blue-600 transition-colors shadow-sm">
                       <span className="text-[10px] font-black text-blue-600 group-hover:text-white/80 leading-none mb-1">{formatMonth(order.scheduledDate!)}</span>
                       <span className="text-2xl font-black text-slate-900 group-hover:text-white leading-none">{formatDay(order.scheduledDate!)}</span>
                       <span className="text-[10px] font-black text-slate-400 group-hover:text-white/90 leading-none mt-1">{formatTime(order.scheduledDate!)}</span>
                     </div>
 
-                    {/* Conteúdo */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <h3 className="text-lg lg:text-xl font-black text-slate-900 uppercase tracking-tight group-hover:text-blue-600 transition-colors truncate">{order.customerName}</h3>
@@ -114,13 +136,11 @@ const Dashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Status */}
                     <div className="shrink-0 hidden sm:block">
-                      <span className={`text-[9px] px-4 py-2 rounded-xl font-black uppercase tracking-widest shadow-sm border ${
-                        order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-600 text-white border-blue-600' : 
-                        order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                        'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}>
+                      <span className={`text-[9px] px-4 py-2 rounded-xl font-black uppercase tracking-widest shadow-sm border ${order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-600 text-white border-blue-600' :
+                          order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                            'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
                         {order.status}
                       </span>
                     </div>
@@ -128,9 +148,9 @@ const Dashboard: React.FC = () => {
                 </Link>
               );
             })}
-            
+
             {allUpcoming.length > 5 && (
-              <button 
+              <button
                 onClick={() => setShowExpanded(!showExpanded)}
                 className="w-full py-5 mt-4 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all font-black text-[10px] uppercase tracking-widest"
               >
@@ -151,15 +171,13 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Seção Lateral - Exclusiva para Administradores */}
         {isAdmin && (
           <div className="lg:col-span-4 space-y-6">
-            {/* Ações Rápidas */}
             <div className="bg-white p-8 lg:p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
               <h2 className="text-lg lg:text-xl font-black text-slate-900 mb-8 flex items-center gap-3 uppercase tracking-tight">
                 <i className="fa-solid fa-bolt text-yellow-500"></i> Ações Rápidas
               </h2>
-              
+
               <div className="space-y-4">
                 <Link to="/ordens?action=new" className="flex items-center gap-5 p-6 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-[2rem] border border-blue-100 transition-all group active:scale-95 shadow-sm">
                   <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-blue-600/20 group-hover:scale-110 transition-transform">
@@ -177,21 +195,20 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Resumo Global Diário */}
             <div className="bg-[#0F172A] p-8 lg:p-10 rounded-[2.5rem] shadow-2xl text-white relative overflow-hidden">
               <div className="absolute -right-8 -top-8 w-32 h-32 bg-blue-600/10 rounded-full blur-3xl"></div>
               <div className="flex justify-between items-center mb-8 relative z-10">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Resumo de Hoje</span>
               </div>
               <div className="grid grid-cols-2 gap-4 relative z-10">
-                 <div className="bg-slate-800/30 p-5 rounded-[1.5rem] border border-slate-700/30">
-                    <p className="text-3xl font-black mb-1">{data.orders.filter(o => o.createdAt.startsWith(new Date().toISOString().split('T')[0])).length}</p>
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Abertas Hoje</p>
-                 </div>
-                 <div className="bg-slate-800/30 p-5 rounded-[1.5rem] border border-slate-700/30">
-                    <p className="text-3xl font-black mb-1 text-green-500">{data.orders.filter(o => o.finishedAt?.startsWith(new Date().toISOString().split('T')[0])).length}</p>
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Finalizadas Hoje</p>
-                 </div>
+                <div className="bg-slate-800/30 p-5 rounded-[1.5rem] border border-slate-700/30">
+                  <p className="text-3xl font-black mb-1">{orders.filter(o => o.createdAt.startsWith(new Date().toISOString().split('T')[0])).length}</p>
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Abertas Hoje</p>
+                </div>
+                <div className="bg-slate-800/30 p-5 rounded-[1.5rem] border border-slate-700/30">
+                  <p className="text-3xl font-black mb-1 text-green-500">{orders.filter(o => o.finishedAt?.startsWith(new Date().toISOString().split('T')[0])).length}</p>
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Finalizadas Hoje</p>
+                </div>
               </div>
             </div>
           </div>

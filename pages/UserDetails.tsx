@@ -1,14 +1,47 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { storageService } from '../services/storageService';
-import { OrderStatus, UserRole } from '../types';
+import { dbService } from '../services/dbService';
+import { authService } from '../services/authService';
+import { OrderStatus, UserRole, User, ServiceOrder } from '../types';
 
 const UserDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const data = storageService.getData();
-  const user = data.users.find(u => u.id === id);
-  const orders = data.orders.filter(o => o.techId === id);
+  const [user, setUser] = useState<User | null>(null);
+  const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = async () => {
+    if (!id) return;
+    try {
+      const currentUser = await authService.getCurrentUser();
+      if (!currentUser) return;
+
+      const [userData, userOrders] = await Promise.all([
+        dbService.getUser(id),
+        dbService.getOrders(currentUser.companyId, id)
+      ]);
+
+      setUser(userData);
+      setOrders(userOrders);
+    } catch (error) {
+      console.error("Erro ao carregar detalhes do usuário:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-24">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -47,29 +80,28 @@ const UserDetails: React.FC = () => {
           </Link>
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-slate-900">{user.name}</h1>
-            <span className={`text-xs px-2 py-1 rounded-full font-bold uppercase ${
-              user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'
-            }`}>
+            <span className={`text-xs px-2 py-1 rounded-full font-bold uppercase ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'
+              }`}>
               {user.role}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-             <p className="text-slate-500 flex items-center gap-1 text-sm">
-                <i className="fa-solid fa-envelope text-xs"></i> {user.email}
-             </p>
-             {user.phone && (
-               <a 
-                 href={`https://wa.me/${user.phone.replace(/\D/g, '')}`}
-                 target="_blank"
-                 rel="noreferrer"
-                 className="text-green-600 font-bold flex items-center gap-1 text-sm hover:underline"
-               >
-                 <i className="fa-brands fa-whatsapp"></i> {user.phone}
-               </a>
-             )}
-             <p className="text-slate-500 flex items-center gap-1 text-sm">
-                <i className="fa-solid fa-map-marker-alt text-xs"></i> {user.city || 'Sem região'}
-             </p>
+            <p className="text-slate-500 flex items-center gap-1 text-sm">
+              <i className="fa-solid fa-envelope text-xs"></i> {user.email}
+            </p>
+            {user.phone && (
+              <a
+                href={`https://wa.me/${user.phone.replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-green-600 font-bold flex items-center gap-1 text-sm hover:underline"
+              >
+                <i className="fa-brands fa-whatsapp"></i> {user.phone}
+              </a>
+            )}
+            <p className="text-slate-500 flex items-center gap-1 text-sm">
+              <i className="fa-solid fa-map-marker-alt text-xs"></i> {user.city || 'Sem região'}
+            </p>
           </div>
         </div>
       </div>
@@ -95,7 +127,7 @@ const UserDetails: React.FC = () => {
             Histórico de Atendimentos
           </h2>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -111,11 +143,10 @@ const UserDetails: React.FC = () => {
               {orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(order => (
                 <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4">
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${
-                      order.status === OrderStatus.FINISHED ? 'bg-green-100 text-green-700' :
-                      order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
-                      'bg-orange-100 text-orange-700'
-                    }`}>
+                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${order.status === OrderStatus.FINISHED ? 'bg-green-100 text-green-700' :
+                        order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
+                          'bg-orange-100 text-orange-700'
+                      }`}>
                       {order.status}
                     </span>
                   </td>
