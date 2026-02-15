@@ -32,31 +32,24 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Escutar mudanças de autenticação do Supabase
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        try {
-          // Buscar dados do perfil do usuário em public.users
-          const user = await authService.getCurrentUser();
+    const initAuth = async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        if (user) {
           setCurrentUser(user);
-
-          if (user?.companyId) {
+          if (user.companyId) {
             const companyData = await dbService.getCompany(user.companyId);
             setCompany(companyData);
           }
-        } catch (error) {
-          console.error("Erro ao carregar perfil do usuário:", error);
         }
-      } else {
-        setCurrentUser(null);
-        setCompany(null);
+      } catch (error) {
+        console.error("Erro ao carregar sessão:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
-
-    return () => {
-      subscription.unsubscribe();
     };
+
+    initAuth();
   }, []);
 
   const handleUserChange = (user: User | null) => {

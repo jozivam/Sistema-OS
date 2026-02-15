@@ -140,8 +140,9 @@ export const dbService = {
         return mapUser(data);
     },
 
-    async createUser(userData: Omit<User, 'id'>) {
+    async createUser(userData: Omit<User, 'id'> & { id?: string }) {
         const { data, error } = await supabase.from('users').insert({
+            id: userData.id,
             company_id: userData.companyId,
             name: userData.name,
             email: userData.email,

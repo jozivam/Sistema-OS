@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
@@ -96,6 +95,7 @@ const DeveloperSettings: React.FC = () => {
         setToast({ message: 'Dados do desenvolvedor atualizados!', type: 'success' });
       } else {
         const newUser = await dbService.createUser({
+          id: BYPASS_AUTH ? crypto.randomUUID() : undefined,
           name: userFormData.name,
           email: userFormData.email,
           password: userFormData.password,
