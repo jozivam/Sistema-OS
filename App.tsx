@@ -24,7 +24,7 @@ import DeveloperPanel from './pages/DeveloperPanel';
 import CompanyManagement from './pages/CompanyManagement';
 import DeveloperPayments from './pages/DeveloperPayments';
 import DeveloperSettings from './pages/DeveloperSettings';
-import SignUp from './pages/SignUp';
+// import SignUp from './pages/SignUp';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -74,7 +74,6 @@ const App: React.FC = () => {
   return (
     <Router>
       <Routes>
-        <Route path="/signup" element={<SignUp />} />
         <Route
           path="*"
           element={

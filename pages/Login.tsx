@@ -100,11 +100,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               )}
             </button>
 
-            <div className="text-center mt-6">
-              <Link to="/signup" className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest transition-colors">
-                Não tem uma conta? Criar acesso
-              </Link>
-            </div>
+            {/* Link de cadastro removido por solicitação - Cadastro agora é apenas via Developer Panel */}
           </form>
         </div>
       </div>

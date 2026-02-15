@@ -101,7 +101,7 @@ const DeveloperSettings: React.FC = () => {
           password: userFormData.password,
           phone: userFormData.phone,
           role: UserRole.DEVELOPER,
-          companyId: currentUser?.companyId || 'dev-corp', // Default or assigned
+          companyId: currentUser?.companyId || '00000000-0000-0000-0000-000000000000', // Default para empresa dev
           isBlocked: false,
           city: ''
         });
