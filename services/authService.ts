@@ -76,7 +76,12 @@ export const authService = {
             password,
         });
 
-        if (error) throw error;
+        if (error) {
+            if (error.message.includes('Email signups are disabled')) {
+                throw new Error('EMAIL_SIGNUP_DISABLED');
+            }
+            throw error;
+        }
         if (!data.user) throw new Error('Falha ao criar usuário.');
 
         // Criar perfil em public.users

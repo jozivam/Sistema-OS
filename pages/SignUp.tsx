@@ -60,7 +60,15 @@ const SignUp: React.FC = () => {
                         {error && (
                             <div className="bg-red-50 text-red-600 p-4 rounded-lg text-xs font-black uppercase flex items-start gap-2 border border-red-100 animate-in fade-in slide-in-from-top-2">
                                 <i className="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
-                                <span>{error}</span>
+                                {error === 'EMAIL_SIGNUP_DISABLED' ? (
+                                    <span>
+                                        <strong>ERRO: CADASTROS DESATIVADOS</strong><br />
+                                        O desenvolvedor precisa ativar o provedor de e-mail no painel do Supabase.<br />
+                                        <Link to="/" className="underline mt-2 inline-block">Voltar para o Login</Link>
+                                    </span>
+                                ) : (
+                                    <span>{error}</span>
+                                )}
                             </div>
                         )}
 
