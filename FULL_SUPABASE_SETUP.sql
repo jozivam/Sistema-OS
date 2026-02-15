@@ -4,7 +4,11 @@
 -- Todos os dados nas tabelas abaixo serão apagados.
 -- ==========================================
 
--- 1. REMOVER TABELAS EXISTENTES (Limpeza)
+-- 1. REMOVER TRIGGERS E FUNÇÕES ANTIGAS
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user();
+
+-- 2. REMOVER TABELAS EXISTENTES (Limpeza)
 DROP TABLE IF EXISTS public.company_payments CASCADE;
 DROP TABLE IF EXISTS public.chat_messages CASCADE;
 DROP TABLE IF EXISTS public.service_orders CASCADE;
@@ -12,7 +16,7 @@ DROP TABLE IF EXISTS public.customers CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
 DROP TABLE IF EXISTS public.companies CASCADE;
 
--- 2. CRIAÇÃO DAS TABELAS COM TIPOS CORRETOS (UUID)
+-- 3. CRIAÇÃO DAS TABELAS COM TIPOS CORRETOS (UUID)
 
 -- Tabela de Empresas
 CREATE TABLE public.companies (
@@ -107,8 +111,27 @@ CREATE TABLE public.company_payments (
     expires_at_after TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
--- 3. SEGURANÇA (RLS) E POLÍTICAS
+-- 4. AUTOMAÇÃO: Sincronizar auth.users com public.users
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.users (id, name, email, role, is_blocked)
+  VALUES (
+    new.id, 
+    COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)), 
+    new.email, 
+    'Técnico', 
+    false
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 5. SEGURANÇA (RLS) E POLÍTICAS
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
@@ -116,27 +139,17 @@ ALTER TABLE public.service_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.company_payments ENABLE ROW LEVEL SECURITY;
 
--- Políticas para Usuários
-CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can insert their own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users view own profile" ON public.users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users insert own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users update own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
 
--- Políticas Multi-tenant (Baseadas em company_id)
-CREATE POLICY "Multi-tenant access customers" ON public.customers FOR ALL USING (
-    company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
-);
+CREATE POLICY "Multi-tenant access customers" ON public.customers FOR ALL USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
+CREATE POLICY "Multi-tenant access orders" ON public.service_orders FOR ALL USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
+CREATE POLICY "Multi-tenant access messages" ON public.chat_messages FOR ALL USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
 
-CREATE POLICY "Multi-tenant access orders" ON public.service_orders FOR ALL USING (
-    company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
-);
-
-CREATE POLICY "Multi-tenant access messages" ON public.chat_messages FOR ALL USING (
-    company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
-);
-
--- 4. INSERIR DADOS INICIAIS (DEMO)
-
+-- 6. DADOS INICIAIS (DEMO)
 INSERT INTO public.companies (id, name, trade_name, corporate_name, document, email, phone, address, city, plan, monthly_fee, status, settings)
 VALUES 
 ('00000000-0000-0000-0000-000000000000', 'Gestão Online Developer', 'Gestão Online', 'Gestão Online Soluções em Software LTDA', '00.000.000/0001-00', 'contato@gestao.online', '(00) 0000-0000', 'Av. Developer, 1000', 'Silicon Valley', 'LIVRE', 0, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb),
-('11111111-1111-1111-1111-111111111111', 'Tech Solutions', 'Tech Solutions', 'Tech Solutions Hardware e Servicos LTDA', '12.345.678/0001-90', 'admin@techsolutions.com', '(11) 98888-7777', 'Rua das Tecnologias, 45', 'São Paulo/SP', 'TRIMESTRAL', 59.90, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb);
+('11111111-1111-1111-1111-111111111111', 'Tech Solutions', 'Tech Solutions', 'Tech Solutions Hardware e Servicos LTDA', '12.345.678/0001-90', 'admin@techsolutions.com', '(11) 98888-7777', 'Rua das Tecnologias, 45', 'São Paulo/SP', 'TRIMESTRAL', 59.90, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb)
+ON CONFLICT (id) DO NOTHING;
