@@ -68,5 +68,31 @@ export const authService = {
             city: userData.city,
             isBlocked: userData.is_blocked
         } as User;
+    },
+
+    async signUp(email: string, password: string, name: string) {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+        });
+
+        if (error) throw error;
+        if (!data.user) throw new Error('Falha ao criar usuário.');
+
+        // Criar perfil em public.users
+        const { error: profileError } = await supabase.from('users').insert({
+            id: data.user.id,
+            name: name,
+            email: email,
+            role: UserRole.TECH, // Default, será promovido depois
+            is_blocked: false
+        });
+
+        if (profileError) {
+            console.error('Erro ao criar perfil em public.users:', profileError);
+            throw profileError;
+        }
+
+        return data.user;
     }
 };

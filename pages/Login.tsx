@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { UserRole } from '../types';
 
@@ -98,6 +99,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 'Entrar no Painel'
               )}
             </button>
+
+            <div className="text-center mt-6">
+              <Link to="/signup" className="text-[10px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest transition-colors">
+                Não tem uma conta? Criar acesso
+              </Link>
+            </div>
           </form>
         </div>
       </div>
