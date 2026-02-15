@@ -1,4 +1,8 @@
 
+-- ==========================================
+-- 1. CRIAÇÃO DAS TABELAS (SCHEMA)
+-- ==========================================
+
 -- Tabela de Empresas
 CREATE TABLE IF NOT EXISTS public.companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -92,7 +96,10 @@ CREATE TABLE IF NOT EXISTS public.company_payments (
     expires_at_after TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
--- Habilitar RLS em todas as tabelas
+-- ==========================================
+-- 2. SEGURANÇA (RLS) E POLÍTICAS
+-- ==========================================
+
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
@@ -100,38 +107,38 @@ ALTER TABLE public.service_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.company_payments ENABLE ROW LEVEL SECURITY;
 
--- Políticas de RLS (Exemplo básico: usuários só veem dados da sua empresa)
--- Nota: Para usuários DEVELOPER, pode ser necessária uma regra adicional.
+-- Políticas para Usuários
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.users;
+CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
 
--- Policy para public.users
-CREATE POLICY "Users can view their own profile" ON public.users
-    FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.users;
+CREATE POLICY "Users can insert their own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
 
-CREATE POLICY "Users can insert their own profile" ON public.users
-    FOR INSERT WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
+CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
 
-CREATE POLICY "Users can update their own profile" ON public.users
-    FOR UPDATE USING (auth.uid() = id);
+-- Políticas Multi-tenant (Baseadas em company_id)
+DROP POLICY IF EXISTS "Multi-tenant access" ON public.customers;
+CREATE POLICY "Multi-tenant access" ON public.customers FOR ALL USING (
+    company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+);
 
--- Policy genérica para multi-tenancy baseada em company_id
--- Usuários autenticados só podem ver dados da sua própria company_id
-CREATE POLICY "Multi-tenant access" ON public.customers
-    FOR ALL USING (
-        company_id IN (
-            SELECT company_id FROM public.users WHERE id = auth.uid()
-        )
-    );
+DROP POLICY IF EXISTS "Multi-tenant access" ON public.service_orders;
+CREATE POLICY "Multi-tenant access" ON public.service_orders FOR ALL USING (
+    company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+);
 
-CREATE POLICY "Multi-tenant access" ON public.service_orders
-    FOR ALL USING (
-        company_id IN (
-            SELECT company_id FROM public.users WHERE id = auth.uid()
-        )
-    );
+DROP POLICY IF EXISTS "Multi-tenant access" ON public.chat_messages;
+CREATE POLICY "Multi-tenant access" ON public.chat_messages FOR ALL USING (
+    company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+);
 
-CREATE POLICY "Multi-tenant access" ON public.chat_messages
-    FOR ALL USING (
-        company_id IN (
-            SELECT company_id FROM public.users WHERE id = auth.uid()
-        )
-    );
+-- ==========================================
+-- 3. INSERIR DADOS INICIAIS (DEMO)
+-- ==========================================
+
+INSERT INTO public.companies (id, name, trade_name, corporate_name, document, email, phone, address, city, plan, monthly_fee, status, settings)
+VALUES 
+('00000000-0000-0000-0000-000000000000', 'Gestão Online Developer', 'Gestão Online', 'Gestão Online Soluções em Software LTDA', '00.000.000/0001-00', 'contato@gestao.online', '(00) 0000-0000', 'Av. Developer, 1000', 'Silicon Valley', 'LIVRE', 0, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb),
+('11111111-1111-1111-1111-111111111111', 'Tech Solutions', 'Tech Solutions', 'Tech Solutions Hardware e Servicos LTDA', '12.345.678/0001-90', 'admin@techsolutions.com', '(11) 98888-7777', 'Rua das Tecnologias, 45', 'São Paulo/SP', 'TRIMESTRAL', 59.90, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb)
+ON CONFLICT (id) DO NOTHING;
