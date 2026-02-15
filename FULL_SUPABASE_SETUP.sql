@@ -1,10 +1,21 @@
 
 -- ==========================================
--- 1. CRIAÇÃO DAS TABELAS (SCHEMA)
+-- AVISO: Este script irá RECOMEÇAR o banco de dados.
+-- Todos os dados nas tabelas abaixo serão apagados.
 -- ==========================================
 
+-- 1. REMOVER TABELAS EXISTENTES (Limpeza)
+DROP TABLE IF EXISTS public.company_payments CASCADE;
+DROP TABLE IF EXISTS public.chat_messages CASCADE;
+DROP TABLE IF EXISTS public.service_orders CASCADE;
+DROP TABLE IF EXISTS public.customers CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
+DROP TABLE IF EXISTS public.companies CASCADE;
+
+-- 2. CRIAÇÃO DAS TABELAS COM TIPOS CORRETOS (UUID)
+
 -- Tabela de Empresas
-CREATE TABLE IF NOT EXISTS public.companies (
+CREATE TABLE public.companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     corporate_name TEXT,
@@ -29,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.companies (
 );
 
 -- Tabela de Usuários (Extensão do auth.users)
-CREATE TABLE IF NOT EXISTS public.users (
+CREATE TABLE public.users (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
@@ -42,7 +53,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 
 -- Tabela de Clientes
-CREATE TABLE IF NOT EXISTS public.customers (
+CREATE TABLE public.customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -56,7 +67,7 @@ CREATE TABLE IF NOT EXISTS public.customers (
 );
 
 -- Tabela de Ordens de Serviço
-CREATE TABLE IF NOT EXISTS public.service_orders (
+CREATE TABLE public.service_orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     customer_id UUID NOT NULL REFERENCES public.customers(id),
@@ -75,7 +86,7 @@ CREATE TABLE IF NOT EXISTS public.service_orders (
 );
 
 -- Tabela de Mensagens de Chat
-CREATE TABLE IF NOT EXISTS public.chat_messages (
+CREATE TABLE public.chat_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     sender_id UUID NOT NULL REFERENCES public.users(id),
@@ -87,7 +98,7 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
 );
 
 -- Tabela de Pagamentos das Empresas
-CREATE TABLE IF NOT EXISTS public.company_payments (
+CREATE TABLE public.company_payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     amount DECIMAL(10,2) NOT NULL,
@@ -96,9 +107,7 @@ CREATE TABLE IF NOT EXISTS public.company_payments (
     expires_at_after TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
--- ==========================================
--- 2. SEGURANÇA (RLS) E POLÍTICAS
--- ==========================================
+-- 3. SEGURANÇA (RLS) E POLÍTICAS
 
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
@@ -108,37 +117,26 @@ ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.company_payments ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para Usuários
-DROP POLICY IF EXISTS "Users can view their own profile" ON public.users;
 CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users can insert their own profile" ON public.users;
 CREATE POLICY "Users can insert their own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
 CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
 
 -- Políticas Multi-tenant (Baseadas em company_id)
-DROP POLICY IF EXISTS "Multi-tenant access" ON public.customers;
-CREATE POLICY "Multi-tenant access" ON public.customers FOR ALL USING (
+CREATE POLICY "Multi-tenant access customers" ON public.customers FOR ALL USING (
     company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
 );
 
-DROP POLICY IF EXISTS "Multi-tenant access" ON public.service_orders;
-CREATE POLICY "Multi-tenant access" ON public.service_orders FOR ALL USING (
+CREATE POLICY "Multi-tenant access orders" ON public.service_orders FOR ALL USING (
     company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
 );
 
-DROP POLICY IF EXISTS "Multi-tenant access" ON public.chat_messages;
-CREATE POLICY "Multi-tenant access" ON public.chat_messages FOR ALL USING (
+CREATE POLICY "Multi-tenant access messages" ON public.chat_messages FOR ALL USING (
     company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
 );
 
--- ==========================================
--- 3. INSERIR DADOS INICIAIS (DEMO)
--- ==========================================
+-- 4. INSERIR DADOS INICIAIS (DEMO)
 
 INSERT INTO public.companies (id, name, trade_name, corporate_name, document, email, phone, address, city, plan, monthly_fee, status, settings)
 VALUES 
 ('00000000-0000-0000-0000-000000000000', 'Gestão Online Developer', 'Gestão Online', 'Gestão Online Soluções em Software LTDA', '00.000.000/0001-00', 'contato@gestao.online', '(00) 0000-0000', 'Av. Developer, 1000', 'Silicon Valley', 'LIVRE', 0, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb),
-('11111111-1111-1111-1111-111111111111', 'Tech Solutions', 'Tech Solutions', 'Tech Solutions Hardware e Servicos LTDA', '12.345.678/0001-90', 'admin@techsolutions.com', '(11) 98888-7777', 'Rua das Tecnologias, 45', 'São Paulo/SP', 'TRIMESTRAL', 59.90, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb)
-ON CONFLICT (id) DO NOTHING;
+('11111111-1111-1111-1111-111111111111', 'Tech Solutions', 'Tech Solutions', 'Tech Solutions Hardware e Servicos LTDA', '12.345.678/0001-90', 'admin@techsolutions.com', '(11) 98888-7777', 'Rua das Tecnologias, 45', 'São Paulo/SP', 'TRIMESTRAL', 59.90, 'ACTIVE', '{"enableAI": true, "enableAttachments": true, "enableChat": true, "enableHistory": true, "orderTypes": ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]}'::jsonb);
