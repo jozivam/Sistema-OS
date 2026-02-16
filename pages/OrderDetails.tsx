@@ -106,7 +106,7 @@ const OrderDetails: React.FC = () => {
     }
   };
 
-  const handleSave = async (type: 'all' | 'desc' | 'report' | 'ai' = 'all') => {
+  const handleSave = async (type: 'all' | 'desc' | 'report' | 'ai' | 'none' = 'all') => {
     if (isLocked) return;
 
     if (type === 'desc') setIsSavingDesc(true);
@@ -122,7 +122,7 @@ const OrderDetails: React.FC = () => {
         description: editedDescription,
         dailyHistory: editedHistory,
         aiReport: editedAIReport,
-        scheduledDate: editedScheduledDate ? new Date(editedScheduledDate).toISOString() : order.scheduledDate,
+        scheduledDate: editedScheduledDate ? new Date(editedScheduledDate).toISOString() : null,
         type: editedType,
         techId: editedTechId,
         techName: selectedTech?.name || order.techName
@@ -130,10 +130,15 @@ const OrderDetails: React.FC = () => {
 
       await dbService.updateOrder(order.id, updatedOrder);
       setOrder(updatedOrder);
-      setToast({ message: 'Dados da OS salvos!', type: 'success' });
+
+      if (type !== 'none') {
+        setToast({ message: 'Dados da OS salvos!', type: 'success' });
+      }
+      return updatedOrder;
     } catch (error) {
       console.error("Erro ao salvar OS:", error);
       setToast({ message: 'Erro ao salvar OS.', type: 'error' });
+      throw error;
     } finally {
       setIsSaving(false);
       setIsSavingDesc(false);
@@ -161,20 +166,27 @@ const OrderDetails: React.FC = () => {
   };
 
   const handleStatusChange = async (newStatus: OrderStatus) => {
-    const updatedOrder: ServiceOrder = {
-      ...order,
-      status: newStatus,
-      finishedAt: newStatus === OrderStatus.FINISHED ? new Date().toISOString() : undefined
-    };
+    try {
+      // Primeiro salva qualquer alteração pendente nos campos
+      const currentOrder = await handleSave('none');
 
-    await persistChanges(updatedOrder);
+      const updatedOrder: ServiceOrder = {
+        ...currentOrder,
+        status: newStatus,
+        finishedAt: newStatus === OrderStatus.FINISHED ? new Date().toISOString() : undefined
+      };
 
-    let message = `Status alterado para ${newStatus}`;
-    if (newStatus === OrderStatus.OPEN) message = 'Ordem reaberta!';
-    if (newStatus === OrderStatus.IN_PROGRESS && order.status === OrderStatus.PAUSED) message = 'Serviço retomado!';
-    if (newStatus === OrderStatus.PAUSED) message = 'Serviço pausado!';
+      await persistChanges(updatedOrder);
 
-    setToast({ message, type: 'success' });
+      let message = `Status alterado para ${newStatus}`;
+      if (newStatus === OrderStatus.OPEN) message = 'Ordem reaberta!';
+      if (newStatus === OrderStatus.IN_PROGRESS && order.status === OrderStatus.PAUSED) message = 'Serviço retomado!';
+      if (newStatus === OrderStatus.PAUSED) message = 'Serviço pausado!';
+
+      setToast({ message, type: 'success' });
+    } catch (error) {
+      console.error("Erro ao mudar status:", error);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,8 +305,8 @@ const OrderDetails: React.FC = () => {
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase tracking-tight leading-none mb-1">ATENDIMENTO #{order.id.slice(-4)}</h1>
             <span className={`text-[10px] px-3 py-1 rounded-lg font-black uppercase border shadow-sm ${order.status === OrderStatus.FINISHED ? 'bg-green-100 text-green-700 border-green-200' :
-                order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-white border-orange-600' :
-                  'bg-blue-600 text-white border-blue-700'
+              order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-white border-orange-600' :
+                'bg-blue-600 text-white border-blue-700'
               }`}>{order.status}</span>
           </div>
         </div>

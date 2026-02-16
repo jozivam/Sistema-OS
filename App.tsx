@@ -36,10 +36,19 @@ const App: React.FC = () => {
       try {
         const user = await authService.getCurrentUser();
         if (user) {
-          setCurrentUser(user);
-          if (user.companyId) {
-            const companyData = await dbService.getCompany(user.companyId);
-            setCompany(companyData);
+          // Valar se o usuário ainda existe e está ativo no banco
+          const isValid = await authService.validateSession(user);
+
+          if (isValid) {
+            setCurrentUser(user);
+            if (user.companyId) {
+              const companyData = await dbService.getCompany(user.companyId);
+              setCompany(companyData);
+            }
+          } else {
+            console.warn("Sessão inválida ou expirada. Redirecionando para login.");
+            authService.signOut();
+            setCurrentUser(null);
           }
         }
       } catch (error) {

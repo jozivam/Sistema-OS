@@ -19,12 +19,21 @@ const Dashboard: React.FC = () => {
         setCurrentUser(user);
 
         if (user?.companyId) {
+          console.log('Carregando dados para Empresa ID:', user.companyId);
+          console.log('Usuário Logado:', user.name, '(ID:', user.id, '- Role:', user.role, ')');
+
           const [fetchedOrders, fetchedCustomers] = await Promise.all([
             dbService.getOrders(user.companyId),
             dbService.getCustomers(user.companyId)
           ]);
+
+          console.log('Ordens encontradas:', fetchedOrders.length);
+          console.log('Clientes encontrados:', fetchedCustomers.length);
+
           setOrders(fetchedOrders);
           setCustomers(fetchedCustomers);
+        } else {
+          console.warn('Usuário logado sem Company ID definido.');
         }
       } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
@@ -52,8 +61,13 @@ const Dashboard: React.FC = () => {
 
   // Filtra e ordena as próximas ordens (não finalizadas e não canceladas)
   const allUpcoming = filteredOrders
-    .filter(o => o.status !== OrderStatus.FINISHED && o.status !== OrderStatus.CANCELLED && o.scheduledDate)
-    .sort((a, b) => (a.scheduledDate || '').localeCompare(b.scheduledDate || ''));
+    .filter(o => o.status !== OrderStatus.FINISHED && o.status !== OrderStatus.CANCELLED)
+    .sort((a, b) => {
+      if (a.scheduledDate && b.scheduledDate) return a.scheduledDate.localeCompare(b.scheduledDate);
+      if (a.scheduledDate) return -1;
+      if (b.scheduledDate) return 1;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
 
   // Define quantas ordens exibir: 5 por padrão ou 15 se expandido
   const upcomingOrders = showExpanded ? allUpcoming.slice(0, 15) : allUpcoming.slice(0, 5);
@@ -115,9 +129,18 @@ const Dashboard: React.FC = () => {
                 <Link key={order.id} to={`/ordens/${order.id}`} className="group block bg-slate-50/50 hover:bg-white border border-transparent hover:border-blue-100 p-6 rounded-[2rem] transition-all hover:shadow-xl hover:shadow-blue-500/5">
                   <div className="flex items-center gap-6">
                     <div className="w-16 lg:w-20 h-16 lg:h-20 bg-white rounded-2xl flex flex-col items-center justify-center border border-slate-200 group-hover:bg-blue-600 group-hover:border-blue-600 transition-colors shadow-sm">
-                      <span className="text-[10px] font-black text-blue-600 group-hover:text-white/80 leading-none mb-1">{formatMonth(order.scheduledDate!)}</span>
-                      <span className="text-2xl font-black text-slate-900 group-hover:text-white leading-none">{formatDay(order.scheduledDate!)}</span>
-                      <span className="text-[10px] font-black text-slate-400 group-hover:text-white/90 leading-none mt-1">{formatTime(order.scheduledDate!)}</span>
+                      {order.scheduledDate ? (
+                        <>
+                          <span className="text-[10px] font-black text-blue-600 group-hover:text-white/80 leading-none mb-1">{formatMonth(order.scheduledDate)}</span>
+                          <span className="text-2xl font-black text-slate-900 group-hover:text-white leading-none">{formatDay(order.scheduledDate)}</span>
+                          <span className="text-[10px] font-black text-slate-400 group-hover:text-white/90 leading-none mt-1">{formatTime(order.scheduledDate)}</span>
+                        </>
+                      ) : (
+                        <>
+                          <i className="fa-solid fa-calendar-plus text-slate-300 group-hover:text-white/50 text-xl mb-1"></i>
+                          <span className="text-[8px] font-black text-slate-400 group-hover:text-white leading-none uppercase tracking-widest text-center px-1">A Definir</span>
+                        </>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -138,8 +161,8 @@ const Dashboard: React.FC = () => {
 
                     <div className="shrink-0 hidden sm:block">
                       <span className={`text-[9px] px-4 py-2 rounded-xl font-black uppercase tracking-widest shadow-sm border ${order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-600 text-white border-blue-600' :
-                          order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                            'bg-slate-100 text-slate-600 border-slate-200'
+                        order.status === OrderStatus.PAUSED ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                          'bg-slate-100 text-slate-600 border-slate-200'
                         }`}>
                         {order.status}
                       </span>

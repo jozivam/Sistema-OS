@@ -52,7 +52,7 @@ const DeveloperSettings: React.FC = () => {
       setUserFormData({
         name: user.name,
         email: user.email,
-        password: '', // Password is not returned from DB
+        password: user.password || '',
         phone: user.phone || ''
       });
     } else {
@@ -95,7 +95,6 @@ const DeveloperSettings: React.FC = () => {
         setToast({ message: 'Dados do desenvolvedor atualizados!', type: 'success' });
       } else {
         const newUser = await dbService.createUser({
-          id: BYPASS_AUTH ? crypto.randomUUID() : undefined,
           name: userFormData.name,
           email: userFormData.email,
           password: userFormData.password,

@@ -7,7 +7,7 @@ export enum UserRole {
 
 export enum OrderStatus {
   OPEN = 'Aberta',
-  IN_PROGRESS = 'Em andamento',
+  IN_PROGRESS = 'Em Andamento',
   PAUSED = 'Pausada',
   FINISHED = 'Finalizada',
   CANCELLED = 'Cancelada'

@@ -69,7 +69,7 @@ const Users: React.FC = () => {
         name: user.name,
         email: user.email,
         phone: user.phone || '',
-        password: '', // Não carregamos a senha do banco
+        password: user.password || '',
         role: user.role,
         city: user.city || '',
         isBlocked: user.isBlocked || false

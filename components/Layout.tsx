@@ -65,7 +65,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange }
       {/* Mobile Header */}
       <header className="md:hidden bg-[#0F172A] text-white p-4 flex justify-between items-center sticky top-0 z-50 shrink-0 shadow-lg">
         <h1 className="text-lg font-black flex items-center gap-2 tracking-tighter uppercase">
-          <i className="fa-solid fa-microchip text-blue-400"></i> {isDev ? 'GESTÃO ONLINE' : (company?.tradeName || 'OS IA')}
+          <i className="fa-solid fa-microchip text-blue-400"></i> {company?.tradeName || company?.name || 'SISTEMA OS IA'}
         </h1>
         <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800">
           <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl text-blue-400`}></i>
@@ -80,7 +80,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange }
         <div className="p-8 hidden md:block border-b border-slate-800/50">
           <h1 className="text-xl font-black text-white flex items-center gap-3 tracking-tighter uppercase">
             <i className="fa-solid fa-microchip text-blue-400"></i>
-            {isDev ? 'GESTÃO ONLINE' : (company?.tradeName || 'SISTEMA OS IA')}
+            {company?.tradeName || company?.name || 'SISTEMA OS IA'}
           </h1>
         </div>
 

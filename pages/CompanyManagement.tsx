@@ -142,7 +142,7 @@ const CompanyManagement: React.FC = () => {
       setUserFormData({
         name: user.name,
         email: user.email,
-        password: '', // Hidden or not available
+        password: user.password || '',
         role: user.role,
         phone: user.phone || '',
         city: user.city || ''

@@ -3,6 +3,11 @@ import { User, UserRole } from '../types';
 
 const SESSION_KEY = 'sistema_os_session';
 
+// Garante que o localStorage seja limpo para evitar conflitos com a nova sessão efêmera
+if (typeof window !== 'undefined') {
+    localStorage.clear();
+}
+
 export const authService = {
     async signIn(email: string, password: string) {
         // Busca o usuário diretamente na tabela pública
@@ -29,27 +34,46 @@ export const authService = {
             phone: userData.phone,
             role: userData.role as UserRole,
             city: userData.city,
-            isBlocked: userData.is_blocked
+            isBlocked: userData.is_blocked,
+            password: userData.password
         };
 
-        // Salvar sessão manualmente
-        localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+        // Salvar sessão manualmente (Efêmera: limpa ao fechar aba/navegador)
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
         return user;
     },
 
     async signOut() {
-        localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(SESSION_KEY);
         // Tenta deslogar do supabase se houver sessão residual, mas não bloqueia
         await supabase.auth.signOut().catch(() => { });
     },
 
     async getCurrentUser(): Promise<User | null> {
-        const session = localStorage.getItem(SESSION_KEY);
+        const session = sessionStorage.getItem(SESSION_KEY);
         if (!session) return null;
         try {
             return JSON.parse(session);
         } catch {
             return null;
+        }
+    },
+
+    async validateSession(user: User): Promise<boolean> {
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id, is_blocked')
+                .eq('id', user.id)
+                .single();
+
+            if (error || !data || data.is_blocked) {
+                return false;
+            }
+            return true;
+        } catch (error) {
+            console.error("Erro na validação de sessão:", error);
+            return false;
         }
     },
 

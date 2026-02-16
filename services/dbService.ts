@@ -29,7 +29,8 @@ const mapUser = (raw: any): User => ({
     phone: raw.phone,
     role: raw.role as UserRole,
     city: raw.city,
-    isBlocked: raw.is_blocked
+    isBlocked: raw.is_blocked,
+    password: raw.password
 });
 
 const mapCustomer = (raw: any): Customer => ({
@@ -49,9 +50,9 @@ const mapOrder = (raw: any): ServiceOrder => ({
     id: raw.id,
     companyId: raw.company_id,
     customerId: raw.customer_id,
-    customerName: raw.customer_name || raw.customers?.name || 'Desconhecido',
+    customerName: raw.customer_name || raw.customer?.name || raw.customers?.name || 'Desconhecido',
     techId: raw.tech_id,
-    techName: raw.tech_name || raw.users?.name || 'Não atribuído',
+    techName: raw.tech_name || raw.tech?.name || raw.users?.name || 'Não atribuído',
     type: raw.type,
     description: raw.description,
     dailyHistory: raw.daily_history,
@@ -149,7 +150,8 @@ export const dbService = {
             phone: userData.phone,
             role: userData.role,
             city: userData.city,
-            is_blocked: userData.isBlocked
+            is_blocked: userData.isBlocked,
+            password: userData.password
         }).select().single();
         if (error) throw error;
         return mapUser(data);
@@ -163,6 +165,7 @@ export const dbService = {
         if (updates.role) dbUpdates.role = updates.role;
         if (updates.city) dbUpdates.city = updates.city;
         if (updates.isBlocked !== undefined) dbUpdates.is_blocked = updates.isBlocked;
+        if (updates.password) dbUpdates.password = updates.password;
 
         const { error } = await supabase.from('users').update(dbUpdates).eq('id', id);
         if (error) throw error;
@@ -268,11 +271,14 @@ export const dbService = {
     async updateOrder(id: string, updates: Partial<ServiceOrder>) {
         const dbUpdates: any = {};
         if (updates.status) dbUpdates.status = updates.status;
-        if (updates.description) dbUpdates.description = updates.description;
-        if (updates.dailyHistory) dbUpdates.daily_history = updates.dailyHistory;
-        if (updates.aiReport) dbUpdates.ai_report = updates.aiReport;
-        if (updates.finishedAt) dbUpdates.finished_at = updates.finishedAt;
-        if (updates.cancellationReason) dbUpdates.cancellation_reason = updates.cancellationReason;
+        if (updates.description !== undefined) dbUpdates.description = updates.description;
+        if (updates.dailyHistory !== undefined) dbUpdates.daily_history = updates.dailyHistory;
+        if (updates.aiReport !== undefined) dbUpdates.ai_report = updates.aiReport;
+        if (updates.finishedAt !== undefined) dbUpdates.finished_at = updates.finishedAt;
+        if (updates.cancellationReason !== undefined) dbUpdates.cancellation_reason = updates.cancellationReason;
+        if (updates.scheduledDate !== undefined) dbUpdates.scheduled_date = updates.scheduledDate;
+        if (updates.type) dbUpdates.type = updates.type;
+        if (updates.techId !== undefined) dbUpdates.tech_id = updates.techId || null;
         if (updates.posts) dbUpdates.posts = updates.posts;
         if (updates.attachments) dbUpdates.attachments = updates.attachments;
 
