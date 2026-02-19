@@ -3,10 +3,10 @@ import { User, UserRole } from '../types';
 
 const SESSION_KEY = 'sistema_os_session';
 
-// Garante que o localStorage seja limpo para evitar conflitos com a nova sessão efêmera
-if (typeof window !== 'undefined') {
-    localStorage.clear();
-}
+// O localStorage.clear() foi removido para não apagar a sessão ao recarregar
+// if (typeof window !== 'undefined') {
+//     localStorage.clear();
+// }
 
 export const authService = {
     async signIn(email: string, password: string) {
