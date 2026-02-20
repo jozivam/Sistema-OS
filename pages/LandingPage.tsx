@@ -45,7 +45,7 @@ const LandingPage: React.FC = () => {
 
             {/* Sobre o Sistema */}
             <section className="about" id="about">
-                <div className="section-header">
+                <div className="section-header center">
                     <span className="hero-badge">Sobre o Sistema</span>
                     <h2>Controle Total das Suas Operações</h2>
                     <p>

@@ -171,6 +171,11 @@
 .section-header p {
     color: var(--text-muted);
     font-size: 1.2rem;
+    line-height: 1.6;
+}
+
+.section-header.center {
+    text-align: center;
 }
 
 /* Target Audience */
@@ -249,7 +254,8 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 20px;
-    margin-top: 2.5rem;
+    margin: 2.5rem auto 0;
+    max-width: 900px;
 }
 
 .about-item {

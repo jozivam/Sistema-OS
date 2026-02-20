@@ -3,23 +3,40 @@ import { supabase } from './supabaseClient';
 import { Company, User, Customer, ServiceOrder, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan } from '../types';
 
 // Mappers to convert between Supabase snake_case and App camelCase
-const mapCompany = (raw: any): Company => ({
-    id: raw.id,
-    name: raw.name,
-    corporateName: raw.corporate_name,
-    tradeName: raw.trade_name,
-    document: raw.document,
-    email: raw.email,
-    phone: raw.phone,
-    address: raw.address,
-    city: raw.city,
-    plan: raw.plan as CompanyPlan,
-    monthlyFee: Number(raw.monthly_fee),
-    status: raw.status as 'ACTIVE' | 'BLOCKED',
-    createdAt: raw.created_at,
-    expiresAt: raw.expires_at,
-    settings: raw.settings
-});
+const mapCompany = (raw: any): Company => {
+    let settings = raw.settings;
+    if (typeof settings === 'string') {
+        try {
+            settings = JSON.parse(settings);
+        } catch {
+            settings = {};
+        }
+    }
+
+    return {
+        id: raw.id,
+        name: raw.name,
+        corporateName: raw.corporate_name,
+        tradeName: raw.trade_name,
+        document: raw.document,
+        email: raw.email,
+        phone: raw.phone,
+        address: raw.address,
+        city: raw.city,
+        plan: raw.plan as CompanyPlan,
+        monthlyFee: Number(raw.monthly_fee),
+        status: raw.status as 'ACTIVE' | 'BLOCKED',
+        createdAt: raw.created_at,
+        expiresAt: raw.expires_at,
+        settings: {
+            enableAI: settings?.enableAI ?? false,
+            enableAttachments: settings?.enableAttachments ?? false,
+            enableChat: settings?.enableChat ?? false,
+            enableHistory: settings?.enableHistory ?? false,
+            orderTypes: settings?.orderTypes || []
+        }
+    };
+};
 
 const mapUser = (raw: any): User => ({
     id: raw.id,

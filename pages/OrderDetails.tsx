@@ -455,6 +455,19 @@ const OrderDetails: React.FC = () => {
                     onChange={e => setEditedScheduledDate(e.target.value)}
                   />
                 </div>
+
+                {!isLocked && (
+                  <div className="flex justify-end mt-4">
+                    <button
+                      onClick={() => handleSave()}
+                      disabled={isSaving}
+                      className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      {isSaving ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-floppy-disk"></i>}
+                      Salvar Alterações
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
