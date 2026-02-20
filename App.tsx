@@ -24,6 +24,7 @@ import DeveloperPanel from './pages/DeveloperPanel';
 import CompanyManagement from './pages/CompanyManagement';
 import DeveloperPayments from './pages/DeveloperPayments';
 import DeveloperSettings from './pages/DeveloperSettings';
+import LandingPage from './pages/LandingPage';
 // import SignUp from './pages/SignUp';
 
 const App: React.FC = () => {
@@ -99,7 +100,13 @@ interface AppContentProps {
 
 const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserChange }) => {
   if (!currentUser) {
-    return <Login onLogin={onUserChange} />;
+    return (
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<Login onLogin={onUserChange} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
   }
 
   const isDev = currentUser.role === UserRole.DEVELOPER;
