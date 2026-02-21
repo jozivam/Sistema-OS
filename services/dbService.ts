@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Company, User, Customer, ServiceOrder, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan } from '../types';
+import { Company, User, Customer, ServiceOrder, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan, AppNotification, NotificationType } from '../types';
 
 // Mappers to convert between Supabase snake_case and App camelCase
 const mapCompany = (raw: any): Company => {
@@ -401,5 +401,177 @@ export const dbService = {
             planReference: raw.plan_reference,
             expiresAtAfter: raw.expires_at_after
         }));
+    },
+
+    // Métodos de Restauração (Batch Upsert)
+    async upsertUsers(users: User[]) {
+        const data = users.map(u => ({
+            id: u.id,
+            company_id: u.companyId,
+            name: u.name,
+            email: u.email,
+            phone: u.phone,
+            role: u.role,
+            city: u.city,
+            is_blocked: u.isBlocked,
+            password: u.password
+        }));
+        const { error } = await supabase.from('users').upsert(data);
+        if (error) throw error;
+    },
+
+    async upsertCustomers(customers: Customer[]) {
+        const data = customers.map(c => ({
+            id: c.id,
+            company_id: c.companyId,
+            name: c.name,
+            phone: c.phone,
+            city: c.city,
+            address: c.address,
+            number: c.number,
+            sector: c.sector,
+            notes: c.notes,
+            created_at: c.createdAt
+        }));
+        const { error } = await supabase.from('customers').upsert(data);
+        if (error) throw error;
+    },
+
+    async upsertOrders(orders: ServiceOrder[]) {
+        const data = orders.map(o => ({
+            id: o.id,
+            company_id: o.companyId,
+            customer_id: o.customerId,
+            tech_id: o.techId,
+            type: o.type,
+            description: o.description,
+            status: o.status,
+            scheduled_date: o.scheduledDate,
+            created_at: o.createdAt,
+            finished_at: o.finishedAt,
+            cancellation_reason: o.cancellationReason,
+            daily_history: o.dailyHistory,
+            ai_report: o.aiReport,
+            posts: o.posts,
+            attachments: o.attachments
+        }));
+        const { error } = await supabase.from('service_orders').upsert(data);
+        if (error) throw error;
+    },
+
+    async upsertMessages(messages: ChatMessage[]) {
+        const data = messages.map(m => ({
+            id: m.id,
+            company_id: m.companyId,
+            sender_id: m.senderId,
+            sender_name: m.senderName,
+            receiver_id: m.receiverId,
+            channel_id: m.channelId,
+            text: m.text,
+            timestamp: m.timestamp
+        }));
+        const { error } = await supabase.from('chat_messages').upsert(data);
+        if (error) throw error;
+    },
+
+    async upsertPayments(payments: CompanyPayment[]) {
+        const data = payments.map(p => ({
+            id: p.id,
+            company_id: p.companyId,
+            amount: p.amount,
+            payment_date: p.paymentDate,
+            plan_reference: p.planReference,
+            expires_at_after: p.expiresAtAfter
+        }));
+        const { error } = await supabase.from('company_payments').upsert(data);
+        if (error) throw error;
+    },
+
+    // Notificações
+    async getNotifications(companyId: string): Promise<AppNotification[]> {
+        const { data, error } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        if (error) return [];
+        return (data || []).map(raw => ({
+            id: raw.id,
+            companyId: raw.company_id,
+            type: raw.type as NotificationType,
+            title: raw.title,
+            content: raw.content,
+            link: raw.link,
+            isRead: raw.is_read,
+            createdAt: raw.created_at
+        }));
+    },
+
+    async createNotification(notification: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>) {
+        const { error } = await supabase.from('notifications').insert({
+            company_id: notification.companyId,
+            type: notification.type,
+            title: notification.title,
+            content: notification.content,
+            link: notification.link
+        });
+        if (error) throw error;
+    },
+
+    async markNotificationAsRead(id: string) {
+        const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+        if (error) throw error;
+    },
+
+    // Canais de Suporte (Direct Developer <=> Admin)
+    async getSupportMessages(companyId: string): Promise<ChatMessage[]> {
+        const { data, error } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('channel_id', `support_${companyId}`)
+            .order('timestamp', { ascending: true });
+
+        if (error) return [];
+        return (data || []).map(raw => ({
+            id: raw.id,
+            companyId: raw.company_id,
+            senderId: raw.sender_id,
+            senderName: raw.sender_name,
+            receiverId: raw.receiver_id,
+            channelId: raw.channel_id,
+            text: raw.text,
+            timestamp: raw.timestamp
+        }));
+    },
+
+    async getAllSupportChannels(): Promise<{ companyId: string, companyName: string, lastMessage: string, timestamp: string }[]> {
+        // Busca todas as mensagens de suporte para o desenvolvedor ver quais empresas estão entrando em contato
+        const { data, error } = await supabase
+            .from('chat_messages')
+            .select('*, companies(name)')
+            .filter('channel_id', 'ilike', 'support_%')
+            .order('timestamp', { ascending: false });
+
+        if (error) return [];
+
+        // Agrupa por canal para pegar apenas a última de cada empresa
+        const channels: any[] = [];
+        const seen = new Set();
+
+        data?.forEach(msg => {
+            if (!seen.has(msg.channel_id)) {
+                seen.add(msg.channel_id);
+                channels.push({
+                    companyId: msg.company_id,
+                    companyName: msg.companies?.name || 'Empresa desconhecida',
+                    lastMessage: msg.text,
+                    timestamp: msg.timestamp
+                });
+            }
+        });
+
+        return channels;
     }
 };

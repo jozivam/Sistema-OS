@@ -129,6 +129,24 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export enum NotificationType {
+  PLAN_EXPIRING = 'PLAN_EXPIRING',
+  NEW_MESSAGE = 'NEW_MESSAGE',
+  SERVICE_UPDATE = 'SERVICE_UPDATE',
+  SYSTEM = 'SYSTEM'
+}
+
+export interface AppNotification {
+  id: string;
+  companyId: string;
+  type: NotificationType;
+  title: string;
+  content: string;
+  link?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 export interface AppState {
   companies: Company[];
   users: User[];
@@ -138,4 +156,5 @@ export interface AppState {
   settings: SystemSettings; // Defaults globais
   messages: ChatMessage[];
   companyPayments: CompanyPayment[];
+  notifications: AppNotification[];
 }

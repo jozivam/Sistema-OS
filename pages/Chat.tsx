@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
-import { OrderStatus, ServiceOrder, User, Customer, OrderPost } from '../types';
+import { OrderStatus, ServiceOrder, User, Customer, OrderPost, ChatMessage } from '../types';
 
 const Chat: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -13,6 +13,7 @@ const Chat: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarVisibleOnMobile, setIsSidebarVisibleOnMobile] = useState(true);
+  const [supportMessages, setSupportMessages] = useState<ChatMessage[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
@@ -41,7 +42,23 @@ const Chat: React.FC = () => {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [selectedOrderId, orders]);
+  }, [selectedOrderId, orders, supportMessages]);
+
+  useEffect(() => {
+    if (selectedOrderId === 'support-channel' && currentUser?.companyId) {
+      loadSupportMessages();
+    }
+  }, [selectedOrderId, currentUser]);
+
+  const loadSupportMessages = async () => {
+    if (!currentUser?.companyId) return;
+    try {
+      const msgs = await dbService.getSupportMessages(currentUser.companyId);
+      setSupportMessages(msgs);
+    } catch (error) {
+      console.error("Erro ao carregar mensagens de suporte:", error);
+    }
+  };
 
   // Filtrar ordens ativas para a barra lateral
   const activeOrders = orders.filter(o =>
@@ -58,6 +75,23 @@ const Chat: React.FC = () => {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedOrderId || !currentUser) return;
+
+    if (selectedOrderId === 'support-channel') {
+      try {
+        await dbService.sendMessage({
+          companyId: currentUser.companyId,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
+          channelId: `support_${currentUser.companyId}`,
+          text: newMessage
+        });
+        setNewMessage('');
+        loadSupportMessages();
+      } catch (error) {
+        console.error("Erro ao enviar mensagem de suporte:", error);
+      }
+      return;
+    }
 
     const selectedOrder = orders.find(o => o.id === selectedOrderId);
     if (!selectedOrder) return;
@@ -85,9 +119,16 @@ const Chat: React.FC = () => {
     }
   };
 
+  const isSupportSelected = selectedOrderId === 'support-channel';
   const selectedOrder = orders.find(o => o.id === selectedOrderId);
   const customer = customers.find(c => c.id === selectedOrder?.customerId);
-  const messages = selectedOrder?.posts || [];
+  const messages = isSupportSelected ? supportMessages.map(m => ({
+    id: m.id,
+    userId: m.senderId,
+    userName: m.senderName,
+    content: m.text,
+    createdAt: m.timestamp
+  })) : selectedOrder?.posts || [];
 
   if (loading) {
     return (
@@ -124,6 +165,26 @@ const Chat: React.FC = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+            {currentUser?.role === 'Administrador' && (
+              <button
+                onClick={() => handleSelectOrder('support-channel')}
+                className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all text-left group mb-4 ${selectedOrderId === 'support-channel' ? 'bg-white shadow-lg border border-indigo-100' : 'bg-indigo-600/5 hover:bg-indigo-600/10 border border-indigo-600/10'}`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105 ${selectedOrderId === 'support-channel' ? 'bg-indigo-600' : 'bg-indigo-400'}`}>
+                  <i className="fa-solid fa-headset"></i>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-black text-indigo-900 truncate uppercase tracking-tight leading-none mb-1">Suporte Técnico</p>
+                  <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Canal com Desenvolvedor</p>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+              </button>
+            )}
+
+            <div className="px-2 py-2">
+              <span className="text-[8px] font-medium text-slate-400 uppercase tracking-[0.2em]">Ordens de Serviço</span>
+            </div>
+
             {activeOrders.map(o => (
               <button
                 key={o.id}
@@ -159,7 +220,7 @@ const Chat: React.FC = () => {
         ${!isSidebarVisibleOnMobile ? 'flex' : 'hidden md:flex'} 
         flex-1 flex-col bg-white relative
       `}>
-        {selectedOrder ? (
+        {selectedOrder || isSupportSelected ? (
           <>
             {/* Header da Conversa */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
@@ -170,14 +231,20 @@ const Chat: React.FC = () => {
                 >
                   <i className="fa-solid fa-chevron-left"></i>
                 </button>
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-lg md:text-xl shrink-0">
-                  <i className="fa-solid fa-user-gear"></i>
+                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-lg md:text-xl shrink-0 ${isSupportSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-100 text-blue-600'}`}>
+                  <i className={`fa-solid ${isSupportSelected ? 'fa-headset' : 'fa-user-gear'}`}></i>
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm md:text-base font-black text-slate-900 truncate uppercase tracking-tight leading-none mb-1">{selectedOrder.customerName}</h3>
+                  <h3 className="text-sm md:text-base font-black text-slate-900 truncate uppercase tracking-tight leading-none mb-1">
+                    {isSupportSelected ? 'Suporte Técnico Direto' : selectedOrder?.customerName}
+                  </h3>
                   <div className="flex items-center gap-2">
                     <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">
-                      <i className="fa-solid fa-wrench text-blue-500 mr-1"></i> {selectedOrder.techName}
+                      {isSupportSelected ? (
+                        <><i className="fa-solid fa-code text-indigo-500 mr-1"></i> Atendimento Especializado</>
+                      ) : (
+                        <><i className="fa-solid fa-wrench text-blue-500 mr-1"></i> {selectedOrder?.techName}</>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -189,16 +256,18 @@ const Chat: React.FC = () => {
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.userId === currentUser?.id ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
                   <div className={`max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-2xl shadow-sm ${msg.userId === currentUser?.id
-                      ? 'bg-blue-600 text-white rounded-tr-none'
+                    ? 'bg-blue-600 text-white rounded-tr-none'
+                    : isSupportSelected
+                      ? 'bg-indigo-600 text-white rounded-tl-none'
                       : msg.userId === 'ai-assistant'
                         ? 'bg-indigo-50 border border-indigo-100 text-indigo-900 rounded-tl-none'
                         : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
                     }`}>
                     <div className="flex items-center justify-between gap-4 mb-1">
-                      <span className={`text-[8px] font-black uppercase tracking-widest ${msg.userId === currentUser?.id ? 'text-white/70' : 'text-slate-400'}`}>
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${msg.userId === currentUser?.id || isSupportSelected ? 'text-white/70' : 'text-slate-400'}`}>
                         {msg.userName}
                       </span>
-                      <span className={`text-[8px] font-bold ${msg.userId === currentUser?.id ? 'text-white/50' : 'text-slate-300'}`}>
+                      <span className={`text-[8px] font-bold ${msg.userId === currentUser?.id || isSupportSelected ? 'text-white/50' : 'text-slate-300'}`}>
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
@@ -209,8 +278,10 @@ const Chat: React.FC = () => {
               <div ref={chatEndRef} />
               {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full opacity-30 text-center px-6">
-                  <i className="fa-solid fa-comments text-6xl mb-4"></i>
-                  <p className="text-[10px] font-black uppercase tracking-widest">Inicie o histórico de comunicação técnica para esta OS</p>
+                  <i className={`fa-solid ${isSupportSelected ? 'fa-headset' : 'fa-comments'} text-6xl mb-4`}></i>
+                  <p className="text-[10px] font-black uppercase tracking-widest">
+                    {isSupportSelected ? 'Inicie uma conversa com o desenvolvedor do sistema' : 'Inicie o histórico de comunicação técnica para esta OS'}
+                  </p>
                 </div>
               )}
             </div>
@@ -222,7 +293,7 @@ const Chat: React.FC = () => {
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Mensagem técnica..."
+                  placeholder={isSupportSelected ? "Descreva sua dúvida ou problema para o desenvolvedor..." : "Mensagem técnica..."}
                   className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
                 />
                 <button
