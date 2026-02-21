@@ -4,7 +4,8 @@
     --secondary: #0a0e27;
     --accent: #00d2ff;
     --text-main: #ffffff;
-    --text-muted: #a0aec0;
+    --text-muted: #e2e8f0;
+    /* Brightened for better contrast */
     --bg-dark: #060918;
     --card-bg: rgba(255, 255, 255, 0.05);
     --glass-bg: rgba(10, 14, 39, 0.7);
@@ -18,10 +19,32 @@
 
 .landing-container {
     background-color: var(--bg-dark);
-    color: var(--text-main);
+    color: var(--text-main) !important;
     font-family: 'Inter', -apple-system, sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+}
+
+/* Comprehensive Text Overrides */
+.landing-container h1,
+.landing-container h2,
+.landing-container h3,
+.landing-container h4,
+.landing-container h5,
+.landing-container h6,
+.landing-container p,
+.landing-container span,
+.landing-container div,
+.landing-container strong,
+.landing-container li {
+    color: var(--text-main) !important;
+}
+
+.landing-container .text-muted,
+.landing-container .section-header p,
+.landing-container .benefit-card p,
+.landing-container footer p {
+    color: var(--text-muted) !important;
 }
 
 /* Navbar */
