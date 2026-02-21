@@ -1,20 +1,72 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 🟦 OsRepo
+## O Repositório Digital das Suas Ordens de Serviço
 
-# Run and deploy your AI Studio app
+O OsRepo é uma plataforma de gestão de Ordens de Serviço desenvolvida para empresas que desejam organizar atendimentos técnicos, controlar equipes externas e centralizar informações em um único sistema digital.
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/drive/1olFqx6Kiqfcb8-9IYk3X6bkhSIskjLuU
+## 🚀 Sobre o Projeto
 
-## Run Locally
+O OsRepo foi criado para resolver um problema comum em empresas de serviços: desorganização operacional.
 
-**Prerequisites:**  Node.js
+Muitas empresas ainda utilizam planilhas, anotações em papel ou mensagens espalhadas em aplicativos, o que gera:
 
+- Perda de informações
+- Retrabalho
+- Atrasos
+- Falta de controle sobre técnicos
+- Dificuldade na tomada de decisão
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+O OsRepo centraliza todas as Ordens de Serviço em um ambiente moderno, simples e eficiente.
+
+---
+
+## 🎯 Público-Alvo
+
+O sistema é ideal para:
+
+- Empresas de manutenção
+- Assistências técnicas
+- Provedores de internet
+- Empresas de energia solar
+- Segurança eletrônica
+- Telecomunicações
+- Técnicos autônomos
+- Empresas com equipes externas
+
+---
+
+## ✨ Funcionalidades Principais
+
+- ✔ Criação e gerenciamento de Ordens de Serviço
+- ✔ Cadastro de clientes
+- ✔ Controle de técnicos e equipes
+- ✔ Atualização de status em tempo real
+- ✔ Histórico completo de atendimentos
+- ✔ Relatórios gerenciais
+- ✔ Sistema 100% em nuvem
+
+---
+
+## 🛠 Tecnologias Utilizadas
+
+(Exemplo — ajuste conforme seu projeto)
+
+- React / Next.js
+- TypeScript
+- Node.js
+- PostgreSQL / Firebase
+- TailwindCSS
+- API REST
+
+---
+
+## 📦 Estrutura do Projeto
+
+```bash
+src/
+ ├── components/
+ ├── pages/
+ ├── services/
+ ├── hooks/
+ └── styles/
