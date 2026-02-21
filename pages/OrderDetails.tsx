@@ -4,7 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
 import { OrderStatus, ServiceOrder, UserRole, OrderPost, OrderAttachment, User, Company } from '../types';
-import { generateProfessionalReport } from '../services/geminiService';
+
 import ConfirmModal from '../components/ConfirmModal';
 
 const OrderDetails: React.FC = () => {
@@ -21,7 +21,7 @@ const OrderDetails: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingDesc, setIsSavingDesc] = useState(false);
   const [isSavingReport, setIsSavingReport] = useState(false);
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
   const [attachmentToDelete, setAttachmentToDelete] = useState<string | null>(null);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
 
@@ -146,24 +146,7 @@ const OrderDetails: React.FC = () => {
     }
   };
 
-  const handleGenerateAI = async () => {
-    if (isLocked || !editedHistory.trim()) {
-      setToast({ message: 'Descreva as atividades antes de gerar o relatório IA.', type: 'error' });
-      return;
-    }
 
-    setIsGeneratingAI(true);
-    try {
-      const report = await generateProfessionalReport(editedHistory);
-      setEditedAIReport(report);
-      setToast({ message: 'Relatório profissional gerado pela IA!', type: 'success' });
-    } catch (error) {
-      console.error("Erro ao gerar relatório IA:", error);
-      setToast({ message: 'Erro ao gerar relatório IA.', type: 'error' });
-    } finally {
-      setIsGeneratingAI(false);
-    }
-  };
 
   const handleStatusChange = async (newStatus: OrderStatus) => {
     try {
@@ -567,18 +550,7 @@ const OrderDetails: React.FC = () => {
             <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
               <h2 className="text-xl font-black text-slate-800 flex items-center gap-3 uppercase tracking-tighter">
                 <i className="fa-solid fa-book-open text-orange-600"></i> Relatório de Atividade
-                {settings?.enableAI && <span className="bg-orange-100 text-orange-600 text-[8px] px-2 py-0.5 rounded font-black tracking-widest ml-2">IA DISPONÍVEL</span>}
               </h2>
-              {settings?.enableAI && !isLocked && (
-                <button
-                  onClick={handleGenerateAI}
-                  disabled={isGeneratingAI || !editedHistory.trim()}
-                  className="bg-gradient-to-r from-orange-500 to-amber-500 text-white px-6 py-2.5 rounded-full font-black text-[10px] uppercase tracking-widest shadow-lg shadow-orange-500/20 hover:scale-105 transition-all disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isGeneratingAI ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
-                  Gerar Relatório IA
-                </button>
-              )}
             </div>
 
             <div className="space-y-6">
@@ -593,18 +565,7 @@ const OrderDetails: React.FC = () => {
                 />
               </div>
 
-              {settings?.enableAI && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-4">Relatório Profissional (IA)</label>
-                  <textarea
-                    disabled={isLocked}
-                    className="w-full p-8 bg-white border-2 border-orange-200 rounded-[2rem] outline-none focus:ring-2 focus:ring-orange-500 text-sm font-bold text-slate-700 min-h-[250px] resize-none leading-relaxed shadow-sm"
-                    placeholder="O relatório gerado pela IA aparecerá aqui..."
-                    value={editedAIReport}
-                    onChange={e => setEditedAIReport(e.target.value)}
-                  />
-                </div>
-              )}
+
 
               {!isLocked && (
                 <div className="flex justify-end">

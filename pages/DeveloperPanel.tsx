@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
 import { Company, CompanyPlan, AppState, User, UserRole, ChatMessage } from '../types';
@@ -22,12 +22,23 @@ const DeveloperPanel: React.FC = () => {
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [channelMessages, setChannelMessages] = useState<ChatMessage[]>([]);
   const [replyText, setReplyText] = useState('');
+  const [supportSearchTerm, setSupportSearchTerm] = useState('');
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'support') {
+      setActiveTab('support');
+    } else {
+      setActiveTab('companies');
+    }
+  }, [searchParams]);
 
   const [newCompanyData, setNewCompanyData] = useState({
     corporateName: '',
@@ -105,6 +116,19 @@ const DeveloperPanel: React.FC = () => {
       setReplyText('');
       loadChannelMessages(selectedChannelId);
 
+      // Notificar o cliente da resposta (não bloqueia o envio)
+      try {
+        await dbService.createNotification({
+          companyId: selectedChannelId,
+          type: 'NEW_MESSAGE' as any,
+          title: 'Suporte Técnico',
+          content: 'O desenvolvedor enviou uma nova resposta para o seu chamado.',
+          link: '/mensagens'
+        });
+      } catch (notifError) {
+        console.warn("Notificação não enviada ao cliente:", notifError);
+      }
+
       // Update channels list last message
       setSupportChannels(prev => prev.map(c =>
         c.companyId === selectedChannelId
@@ -149,6 +173,34 @@ const DeveloperPanel: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // Real-time listener para novos chamados
+  useEffect(() => {
+    const { supabase } = dbService as any; // Acessando o cliente supabase via service para evitar imports extras
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel('support-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages'
+        },
+        (payload: any) => {
+          if (payload.new.channel_id.startsWith('support_')) {
+            loadData(); // Recarrega lista de canais
+            setToast({ message: 'Novo chamado ou mensagem recebida!', type: 'success' });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Filtrar para remover a empresa do desenvolvedor das métricas e listagem
   const clientCompanies = useMemo(() => {
@@ -325,7 +377,11 @@ const DeveloperPanel: React.FC = () => {
             className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'support' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
           >
             Atendimento
-            {supportChannels.length > 0 && <span className="bg-indigo-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px]">{supportChannels.length}</span>}
+            {supportChannels.filter(c => c.timestamp).length > 0 && (
+              <span className="bg-indigo-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px]">
+                {supportChannels.filter(c => c.timestamp).length}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -490,6 +546,17 @@ const DeveloperPanel: React.FC = () => {
                               >
                                 <i className="fa-solid fa-screwdriver-wrench w-4 text-slate-400"></i> Gerenciar
                               </Link>
+
+                              <button
+                                onClick={() => {
+                                  setActiveTab('support');
+                                  setSelectedChannelId(company.id);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.1em] text-indigo-600 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+                              >
+                                <i className="fa-solid fa-comments w-4"></i> Atender / Conversar
+                              </button>
 
                               {company.status === 'ACTIVE' ? (
                                 <button
@@ -698,112 +765,126 @@ const DeveloperPanel: React.FC = () => {
               </div>
             </div>
           )}
+        </>
+      )}
 
-          {activeTab === 'support' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[700px] animate-in slide-in-from-bottom-4 duration-500">
-              {/* Channel List */}
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
-                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-1">Chamados Ativos</h3>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">Empresas aguardando suporte</p>
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-                  {supportChannels.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full p-8 opacity-20 text-center">
-                      <i className="fa-solid fa-headset text-4xl mb-4"></i>
-                      <p className="text-[10px] font-black uppercase tracking-widest">Nenhum chamado pendente</p>
-                    </div>
-                  ) : (
-                    supportChannels.map(channel => (
-                      <button
-                        key={channel.companyId}
-                        onClick={() => setSelectedChannelId(channel.companyId)}
-                        className={`w-full p-4 rounded-2xl text-left transition-all flex items-center gap-4 mb-2 ${selectedChannelId === channel.companyId ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'hover:bg-slate-50'}`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${selectedChannelId === channel.companyId ? 'bg-white/20' : 'bg-indigo-100 text-indigo-600'}`}>
-                          <i className="fa-solid fa-building"></i>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className={`text-[11px] font-black truncate uppercase tracking-tight ${selectedChannelId === channel.companyId ? 'text-white' : 'text-slate-900'}`}>{channel.companyName}</p>
-                          <p className={`text-[9px] truncate ${selectedChannelId === channel.companyId ? 'text-white/70' : 'text-slate-400'}`}>{channel.lastMessage}</p>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Chat Window */}
-              <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
-                {selectedChannelId ? (
-                  <>
-                    {/* Header */}
-                    <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-xl">
-                          <i className="fa-solid fa-headset"></i>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter leading-none mb-1">
-                            {supportChannels.find(c => c.companyId === selectedChannelId)?.companyName}
-                          </h3>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Suporte Técnico Direto</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Messages */}
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/30 custom-scrollbar">
-                      {channelMessages.map(msg => (
-                        <div key={msg.id} className={`flex ${msg.senderId === currentUser?.id ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[80%] px-5 py-3.5 rounded-2xl shadow-sm ${msg.senderId === currentUser?.id ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'}`}>
-                            <div className="flex items-center justify-between gap-4 mb-2">
-                              <span className={`text-[8px] font-black uppercase tracking-widest ${msg.senderId === currentUser?.id ? 'text-white/70' : 'text-slate-400'}`}>
-                                {msg.senderName}
-                              </span>
-                              <span className={`text-[8px] font-bold ${msg.senderId === currentUser?.id ? 'text-white/50' : 'text-slate-300'}`}>
-                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <p className="text-sm leading-relaxed">{msg.text}</p>
-                          </div>
-                        </div>
-                      ))}
-                      <div ref={chatEndRef} />
-                    </div>
-
-                    {/* Reply Box */}
-                    <div className="p-6 bg-white border-t border-slate-100">
-                      <form onSubmit={handleSendReply} className="flex items-center gap-4">
-                        <input
-                          type="text"
-                          value={replyText}
-                          onChange={e => setReplyText(e.target.value)}
-                          placeholder="Escreva sua resposta para a empresa..."
-                          className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner"
-                        />
-                        <button
-                          type="submit"
-                          disabled={!replyText.trim()}
-                          className="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-500/30 flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 shrink-0"
-                        >
-                          <i className="fa-solid fa-paper-plane text-lg"></i>
-                        </button>
-                      </form>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
-                    <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-5xl mb-6 text-indigo-400">
-                      <i className="fa-solid fa-comments"></i>
-                    </div>
-                    <p className="text-[10px] font-black uppercase tracking-widest max-w-xs">Selecione uma empresa na lista ao lado para gerenciar o suporte e responder mensagens</p>
-                  </div>
-                )}
+      {activeTab === 'support' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[700px] animate-in slide-in-from-bottom-4 duration-500">
+          {/* Channel List */}
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+              <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-3">Atendimento Proativo</h3>
+              <div className="relative">
+                <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]"></i>
+                <input
+                  type="text"
+                  placeholder="Buscar empresa..."
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-bold uppercase tracking-widest outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={supportSearchTerm}
+                  onChange={(e) => setSupportSearchTerm(e.target.value)}
+                />
               </div>
             </div>
-          )}
-        </>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+              {supportChannels.filter(c => c.companyName.toLowerCase().includes(supportSearchTerm.toLowerCase())).length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full p-8 opacity-20 text-center">
+                  <i className="fa-solid fa-headset text-4xl mb-4"></i>
+                  <p className="text-[10px] font-black uppercase tracking-widest">Nenhuma empresa encontrada</p>
+                </div>
+              ) : (
+                supportChannels
+                  .filter(c => c.companyName.toLowerCase().includes(supportSearchTerm.toLowerCase()))
+                  .map(channel => (
+                    <button
+                      key={channel.companyId}
+                      onClick={() => setSelectedChannelId(channel.companyId)}
+                      className={`w-full p-4 rounded-2xl text-left transition-all flex items-center gap-4 mb-2 ${selectedChannelId === channel.companyId ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'hover:bg-slate-50'}`}
+                    >
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${selectedChannelId === channel.companyId ? 'bg-white/20' : 'bg-indigo-100 text-indigo-600'}`}>
+                        <i className="fa-solid fa-building"></i>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-[11px] font-black truncate uppercase tracking-tight ${selectedChannelId === channel.companyId ? 'text-white' : 'text-slate-900'}`}>{channel.companyName}</p>
+                        <p className={`text-[9px] truncate ${selectedChannelId === channel.companyId ? 'text-white/70' : 'text-slate-400'}`}>{channel.lastMessage}</p>
+                      </div>
+                      {channel.timestamp && !selectedChannelId === channel.companyId && (
+                        <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                      )}
+                    </button>
+                  ))
+              )}
+            </div>
+          </div>
+
+          {/* Chat Window */}
+          <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
+            {selectedChannelId ? (
+              <>
+                {/* Header */}
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-xl">
+                      <i className="fa-solid fa-headset"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter leading-none mb-1">
+                        {supportChannels.find(c => c.companyId === selectedChannelId)?.companyName}
+                      </h3>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Suporte Técnico Direto</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/30 custom-scrollbar">
+                  {channelMessages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.senderId === currentUser?.id ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] px-5 py-3.5 rounded-2xl shadow-sm ${msg.senderId === currentUser?.id ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'}`}>
+                        <div className="flex items-center justify-between gap-4 mb-2">
+                          <span className={`text-[8px] font-black uppercase tracking-widest ${msg.senderId === currentUser?.id ? 'text-white/70' : 'text-slate-400'}`}>
+                            {msg.senderName}
+                          </span>
+                          <span className={`text-[8px] font-bold ${msg.senderId === currentUser?.id ? 'text-white/50' : 'text-slate-300'}`}>
+                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="text-sm leading-relaxed">{msg.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Reply Box */}
+                <div className="p-6 bg-white border-t border-slate-100">
+                  <form onSubmit={handleSendReply} className="flex items-center gap-4">
+                    <input
+                      type="text"
+                      value={replyText}
+                      onChange={e => setReplyText(e.target.value)}
+                      placeholder="Escreva sua resposta para a empresa..."
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!replyText.trim()}
+                      className="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-500/30 flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 shrink-0"
+                    >
+                      <i className="fa-solid fa-paper-plane text-lg"></i>
+                    </button>
+                  </form>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
+                <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-5xl mb-6 text-indigo-400">
+                  <i className="fa-solid fa-comments"></i>
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-widest max-w-xs">Selecione uma empresa na lista ao lado para gerenciar o suporte e responder mensagens</p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

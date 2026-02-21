@@ -248,7 +248,7 @@ const DeveloperSettings: React.FC = () => {
       </div>
 
       <div className="bg-slate-900 p-12 rounded-[2.5rem] text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] text-center border border-slate-800 shadow-2xl">
-        GESTÃO ONLINE &copy; 2026 — SEGURANÇA E ACESSO RESTRITO
+        OsRepo &copy; 2026 — SEGURANÇA E ACESSO RESTRITO
       </div>
 
       {/* Modal Usuário Desenvolvedor */}

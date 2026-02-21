@@ -152,7 +152,7 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserCha
             <Route path="/dashboard" element={<Dashboard />} />
             <Route
               path="/chat"
-              element={company?.settings.enableChat ? <Chat /> : <Navigate to="/dashboard" replace />}
+              element={company?.settings.enableChat ? <Chat company={company} /> : <Navigate to="/dashboard" replace />}
             />
             <Route path="/clientes" element={isAdmin ? <Customers /> : <Navigate to="/dashboard" replace />} />
             <Route path="/clientes/:id" element={isAdmin ? <CustomerDetails /> : <Navigate to="/dashboard" replace />} />

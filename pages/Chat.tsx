@@ -2,9 +2,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
-import { OrderStatus, ServiceOrder, User, Customer, OrderPost, ChatMessage } from '../types';
+import { OrderStatus, ServiceOrder, User, Customer, OrderPost, ChatMessage, Company, NotificationType } from '../types';
 
-const Chat: React.FC = () => {
+interface ChatProps {
+  company: Company | null;
+}
+
+const SUPPORT_LAST_READ_KEY = 'support_last_read_ts';
+
+const Chat: React.FC<ChatProps> = ({ company }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -14,6 +20,8 @@ const Chat: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarVisibleOnMobile, setIsSidebarVisibleOnMobile] = useState(true);
   const [supportMessages, setSupportMessages] = useState<ChatMessage[]>([]);
+  const [unreadSupportCount, setUnreadSupportCount] = useState(0);
+  const [showAllOrders, setShowAllOrders] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
@@ -47,8 +55,71 @@ const Chat: React.FC = () => {
   useEffect(() => {
     if (selectedOrderId === 'support-channel' && currentUser?.companyId) {
       loadSupportMessages();
+      // Marcar como lido ao abrir
+      sessionStorage.setItem(SUPPORT_LAST_READ_KEY, new Date().toISOString());
+      setUnreadSupportCount(0);
     }
   }, [selectedOrderId, currentUser]);
+
+  // Carregar contagem de não lidas ao iniciar
+  useEffect(() => {
+    if (currentUser?.companyId && currentUser?.role === 'Administrador') {
+      loadUnreadCount();
+    }
+  }, [currentUser]);
+
+  // Real-time listener para novas mensagens de suporte
+  useEffect(() => {
+    const { supabase } = dbService as any;
+    if (!supabase || !currentUser?.companyId) return;
+
+    const channel = supabase
+      .channel('chat-support-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `channel_id=eq.support_${currentUser.companyId}`
+        },
+        (payload: any) => {
+          // Se a mensagem não é do usuário atual, incrementar badge
+          if (payload.new.sender_id !== currentUser.id) {
+            if (selectedOrderId === 'support-channel') {
+              // Se o chat está aberto, só recarrega mensagens
+              loadSupportMessages();
+              sessionStorage.setItem(SUPPORT_LAST_READ_KEY, new Date().toISOString());
+            } else {
+              setUnreadSupportCount(prev => prev + 1);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.companyId, selectedOrderId]);
+
+  const loadUnreadCount = async () => {
+    if (!currentUser?.companyId) return;
+    try {
+      const msgs = await dbService.getSupportMessages(currentUser.companyId);
+      const lastRead = sessionStorage.getItem(SUPPORT_LAST_READ_KEY);
+      if (lastRead) {
+        const unread = msgs.filter(m => m.timestamp > lastRead && m.senderId !== currentUser.id);
+        setUnreadSupportCount(unread.length);
+      } else {
+        // Se nunca leu, contar todas as mensagens do desenvolvedor
+        const unread = msgs.filter(m => m.senderId !== currentUser.id);
+        setUnreadSupportCount(unread.length);
+      }
+    } catch (error) {
+      console.error('Erro ao contar não lidas:', error);
+    }
+  };
 
   const loadSupportMessages = async () => {
     if (!currentUser?.companyId) return;
@@ -85,8 +156,22 @@ const Chat: React.FC = () => {
           channelId: `support_${currentUser.companyId}`,
           text: newMessage
         });
+
         setNewMessage('');
         loadSupportMessages();
+
+        // Notificar o desenvolvedor (não bloqueia o envio)
+        try {
+          await dbService.createNotification({
+            companyId: 'dev-corp',
+            type: NotificationType.NEW_MESSAGE,
+            title: 'Novo Chamado',
+            content: `${currentUser.name} (${company?.tradeName || company?.name}) enviou uma mensagem de suporte.`,
+            link: `/developer?tab=support`
+          });
+        } catch (notifError) {
+          console.warn("Notificação não enviada (não crítico):", notifError);
+        }
       } catch (error) {
         console.error("Erro ao enviar mensagem de suporte:", error);
       }
@@ -168,7 +253,7 @@ const Chat: React.FC = () => {
             {currentUser?.role === 'Administrador' && (
               <button
                 onClick={() => handleSelectOrder('support-channel')}
-                className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all text-left group mb-4 ${selectedOrderId === 'support-channel' ? 'bg-white shadow-lg border border-indigo-100' : 'bg-indigo-600/5 hover:bg-indigo-600/10 border border-indigo-600/10'}`}
+                className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all duration-200 text-left group mb-4 ${selectedOrderId === 'support-channel' ? 'bg-white shadow-lg border border-indigo-100' : 'bg-indigo-600/5 hover:bg-indigo-600/10 hover:shadow-md hover:scale-[1.01] border border-indigo-600/10'}`}
               >
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105 ${selectedOrderId === 'support-channel' ? 'bg-indigo-600' : 'bg-indigo-400'}`}>
                   <i className="fa-solid fa-headset"></i>
@@ -177,34 +262,42 @@ const Chat: React.FC = () => {
                   <p className="text-[10px] font-black text-indigo-900 truncate uppercase tracking-tight leading-none mb-1">Suporte Técnico</p>
                   <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Canal com Desenvolvedor</p>
                 </div>
-                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                {unreadSupportCount > 0 ? (
+                  <span className="bg-red-500 text-white min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[9px] font-black animate-bounce shadow-lg shadow-red-500/30">
+                    {unreadSupportCount}
+                  </span>
+                ) : (
+                  <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                )}
               </button>
             )}
 
             <div className="px-2 py-2">
-              <span className="text-[8px] font-medium text-slate-400 uppercase tracking-[0.2em]">Ordens de Serviço</span>
+              <span className="text-[8px] font-medium text-slate-400 uppercase tracking-[0.2em]">Ordens de Serviço ({activeOrders.length})</span>
             </div>
 
-            {activeOrders.map(o => (
-              <button
-                key={o.id}
-                onClick={() => handleSelectOrder(o.id)}
-                className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all text-left group ${selectedOrderId === o.id ? 'bg-white shadow-lg border border-blue-100' : 'hover:bg-slate-200/50'}`}
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105 ${selectedOrderId === o.id ? 'bg-blue-600' : 'bg-slate-300'}`}>
-                  <i className="fa-solid fa-comment-dots"></i>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black text-slate-900 truncate uppercase tracking-tight leading-none mb-1">{o.customerName}</p>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">OS #{o.id.slice(-4)}</p>
-                </div>
-                {o.posts && o.posts.length > 0 && (
-                  <div className="text-[8px] text-slate-400 font-bold">
-                    {new Date(o.posts[o.posts.length - 1].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+              {activeOrders.map(o => (
+                <button
+                  key={o.id}
+                  onClick={() => handleSelectOrder(o.id)}
+                  className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all duration-200 text-left group ${selectedOrderId === o.id ? 'bg-white shadow-lg border border-blue-100' : 'hover:bg-slate-100 hover:shadow-md hover:scale-[1.01]'}`}
+                >
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105 ${selectedOrderId === o.id ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                    <i className="fa-solid fa-comment-dots"></i>
                   </div>
-                )}
-              </button>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-slate-900 truncate uppercase tracking-tight leading-none mb-1">{o.customerName}</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">OS #{o.id.slice(-4)}</p>
+                  </div>
+                  {o.posts && o.posts.length > 0 && (
+                    <div className="text-[8px] text-slate-400 font-bold">
+                      {new Date(o.posts[o.posts.length - 1].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
             {activeOrders.length === 0 && (
               <div className="text-center py-12 opacity-40">
                 <i className="fa-solid fa-inbox text-4xl mb-3 text-slate-300"></i>

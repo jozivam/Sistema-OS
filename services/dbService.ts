@@ -547,31 +547,50 @@ export const dbService = {
     },
 
     async getAllSupportChannels(): Promise<{ companyId: string, companyName: string, lastMessage: string, timestamp: string }[]> {
-        // Busca todas as mensagens de suporte para o desenvolvedor ver quais empresas estão entrando em contato
-        const { data, error } = await supabase
+        // 1. Busca todas as empresas ativas
+        const { data: companies, error: compError } = await supabase
+            .from('companies')
+            .select('id, name, trade_name')
+            .eq('status', 'ACTIVE')
+            .order('trade_name', { ascending: true });
+
+        if (compError) return [];
+
+        // 2. Busca as últimas mensagens de suporte
+        const { data: messages, error: msgError } = await supabase
             .from('chat_messages')
-            .select('*, companies(name)')
+            .select('company_id, text, timestamp')
             .filter('channel_id', 'ilike', 'support_%')
             .order('timestamp', { ascending: false });
 
-        if (error) return [];
+        if (msgError) return (companies || []).map(c => ({
+            companyId: c.id,
+            companyName: c.trade_name || c.name,
+            lastMessage: '',
+            timestamp: ''
+        }));
 
-        // Agrupa por canal para pegar apenas a última de cada empresa
-        const channels: any[] = [];
-        const seen = new Set();
-
-        data?.forEach(msg => {
-            if (!seen.has(msg.channel_id)) {
-                seen.add(msg.channel_id);
-                channels.push({
-                    companyId: msg.company_id,
-                    companyName: msg.companies?.name || 'Empresa desconhecida',
-                    lastMessage: msg.text,
-                    timestamp: msg.timestamp
-                });
+        // 3. Mapeia as mensagens para as empresas
+        const latestMsgs: Record<string, { text: string, timestamp: string }> = {};
+        messages?.forEach(msg => {
+            if (!latestMsgs[msg.company_id]) {
+                latestMsgs[msg.company_id] = { text: msg.text, timestamp: msg.timestamp };
             }
         });
 
-        return channels;
-    }
+        // 4. Retorna a lista completa prioritizando quem tem mensagem recente
+        return (companies || []).map(c => ({
+            companyId: c.id,
+            companyName: c.trade_name || c.name,
+            lastMessage: latestMsgs[c.id]?.text || 'Sem mensagens anteriores',
+            timestamp: latestMsgs[c.id]?.timestamp || ''
+        })).sort((a, b) => {
+            if (a.timestamp && b.timestamp) return b.timestamp.localeCompare(a.timestamp);
+            if (a.timestamp) return -1;
+            if (b.timestamp) return 1;
+            return a.companyName.localeCompare(b.companyName);
+        });
+    },
+    // Exportando o cliente para uso em listeners realtime
+    supabase
 };

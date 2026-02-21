@@ -33,15 +33,42 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
   }, [user, company]);
 
   const loadNotifications = async () => {
-    if (!user?.companyId) return;
+    const companyIdToLoad = (user?.role === UserRole.DEVELOPER) ? 'dev-corp' : user?.companyId;
+    if (!companyIdToLoad) return;
     try {
-      const data = await dbService.getNotifications(user.companyId);
+      const data = await dbService.getNotifications(companyIdToLoad);
       setNotifications(data);
       setUnreadCount(data.filter(n => !n.isRead).length);
     } catch (error) {
       console.error("Erro ao carregar notificações:", error);
     }
   };
+
+  useEffect(() => {
+    const { supabase } = dbService as any;
+    const companyIdToListen = (user?.role === UserRole.DEVELOPER) ? 'dev-corp' : user?.companyId;
+    if (!supabase || !companyIdToListen) return;
+
+    const channel = supabase
+      .channel('notification-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `company_id=eq.${companyIdToListen}`
+        },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.companyId, user?.role]);
 
   const checkPlanExpiration = async () => {
     if (!company?.expiresAt || !user?.companyId) return;
@@ -84,6 +111,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
     }
   };
 
+  const markAllAsRead = async () => {
+    try {
+      const unread = notifications.filter(n => !n.isRead);
+      await Promise.all(unread.map(n => dbService.markNotificationAsRead(n.id)));
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error("Erro ao marcar todas como lidas:", error);
+    }
+  };
+
   if (!user) return <>{children}</>;
 
   const isDev = user.role === UserRole.DEVELOPER;
@@ -102,7 +140,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
   const navItems = [];
 
   if (isDev) {
-    navItems.push({ path: '/developer', label: 'Painel', icon: 'fa-gauge-high' });
+    navItems.push({ path: '/developer', label: 'Empresas', icon: 'fa-building' });
+    navItems.push({ path: '/developer?tab=support', label: 'Atendimento', icon: 'fa-comments' });
     navItems.push({ path: '/developer/pagamentos', label: 'Pagamentos', icon: 'fa-file-invoice-dollar' });
     navItems.push({ path: '/dashboard', label: 'Monitoramento', icon: 'fa-desktop' });
     navItems.push({ path: '/developer/configuracoes', label: 'Configurações', icon: 'fa-gears' });
@@ -133,7 +172,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
       {/* Mobile Header */}
       <header className="md:hidden fixed top-0 left-0 right-0 bg-[#0F172A] text-white p-4 flex justify-between items-center z-[60] shadow-lg">
         <h1 className="text-lg font-black flex items-center gap-2 tracking-tighter uppercase">
-          <i className="fa-solid fa-microchip text-blue-500"></i> {company?.tradeName || company?.name || 'Sistema OS'}
+          <i className="fa-solid fa-microchip text-blue-500"></i> {isDev ? 'OsRepo' : (company?.tradeName || company?.name || 'Sistema OS')}
         </h1>
         <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800">
           <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl text-blue-500`}></i>
@@ -148,7 +187,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
         <div className="p-6 md:p-8 hidden md:block">
           <h1 className="text-xl font-black text-white flex items-center gap-3 tracking-tighter uppercase px-2">
             <i className="fa-solid fa-microchip text-blue-500"></i>
-            <span className="truncate">{company?.tradeName || company?.name || 'Sistema OS'}</span>
+            <span className="truncate">{isDev ? 'OsRepo' : (company?.tradeName || company?.name || 'Sistema OS')}</span>
           </h1>
         </div>
 
@@ -212,8 +251,22 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
               {showNotifications && (
                 <div className="absolute right-0 mt-3 w-80 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-900">Notificações</h4>
-                    {unreadCount > 0 && <span className="bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">{unreadCount}</span>}
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-900 leading-none mb-1">Notificações</h4>
+                      {unreadCount > 0 ? (
+                        <p className="text-[8px] font-bold text-blue-600 uppercase tracking-tighter">{unreadCount} não lidas</p>
+                      ) : (
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Tudo em dia</p>
+                      )}
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
+                        className="text-[8px] font-black text-blue-600 uppercase tracking-widest hover:underline active:opacity-70"
+                      >
+                        Marcar todas como lidas
+                      </button>
+                    )}
                   </div>
                   <div className="max-h-96 overflow-y-auto custom-scrollbar">
                     {notifications.length === 0 ? (
@@ -222,43 +275,51 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
                         <p className="text-[10px] font-bold uppercase tracking-widest">Nenhuma notificação</p>
                       </div>
                     ) : (
-                      notifications.map(n => (
-                        <div
-                          key={n.id}
-                          className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer relative group ${!n.isRead ? 'bg-blue-50/30' : ''}`}
-                          onClick={() => {
-                            if (!n.isRead) markAsRead(n.id);
-                            if (n.link) navigate(n.link);
-                            setShowNotifications(false);
-                          }}
-                        >
-                          <div className="flex gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${n.type === NotificationType.PLAN_EXPIRING ? 'bg-orange-100 text-orange-600' :
-                                n.type === NotificationType.NEW_MESSAGE ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'
+                      <div className="divide-y divide-slate-50">
+                        {notifications.map(n => (
+                          <div
+                            key={n.id}
+                            className={`p-4 hover:bg-slate-50/80 transition-all cursor-pointer relative group flex gap-3 ${!n.isRead ? 'bg-blue-50/40' : ''}`}
+                            onClick={() => {
+                              if (!n.isRead) markAsRead(n.id);
+                              if (n.link) navigate(n.link);
+                              setShowNotifications(false);
+                            }}
+                          >
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm border ${n.type === NotificationType.PLAN_EXPIRING ? 'bg-orange-100 text-orange-600 border-orange-100' :
+                                n.type === (NotificationType as any).NEW_MESSAGE ? 'bg-blue-100 text-blue-600 border-blue-100' :
+                                  'bg-slate-100 text-slate-600 border-slate-100'
                               }`}>
                               <i className={`fa-solid ${n.type === NotificationType.PLAN_EXPIRING ? 'fa-triangle-exclamation' :
-                                  n.type === NotificationType.NEW_MESSAGE ? 'fa-comment' : 'fa-info-circle'
-                                } text-xs`}></i>
+                                  n.type === (NotificationType as any).NEW_MESSAGE ? 'fa-comment-dots' :
+                                    'fa-info-circle'
+                                } text-sm`}></i>
                             </div>
-                            <div className="min-w-0">
-                              <p className={`text-[11px] font-black leading-tight mb-1 ${!n.isRead ? 'text-slate-900' : 'text-slate-500'}`}>{n.title}</p>
-                              <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">{n.content}</p>
-                              <p className="text-[8px] text-slate-300 font-bold uppercase mt-2">{new Date(n.createdAt).toLocaleString('pt-BR')}</p>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex justify-between items-start mb-1 gap-2">
+                                <p className={`text-[11px] font-black leading-tight truncate ${!n.isRead ? 'text-slate-900' : 'text-slate-500'}`}>{n.title}</p>
+                                {!n.isRead && <span className="w-1.5 h-1.5 bg-blue-600 rounded-full shrink-0 mt-1"></span>}
+                              </div>
+                              <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed font-medium">{n.content}</p>
+                              <p className="text-[8px] text-slate-300 font-bold uppercase mt-2 tracking-tighter">
+                                {new Date(n.createdAt).toLocaleDateString('pt-BR')} às {new Date(n.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity translate-x-1 group-hover:translate-x-0">
+                              <i className="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
                             </div>
                           </div>
-                          {!n.isRead && <div className="absolute top-4 right-4 w-1.5 h-1.5 bg-blue-600 rounded-full"></div>}
-                        </div>
-                      ))
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <div className="p-3 bg-slate-50 text-center">
-                    <button
-                      onClick={() => setShowNotifications(false)}
-                      className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors"
-                    >
-                      Fechar
-                    </button>
-                  </div>
+                  {notifications.length > 0 && (
+                    <div className="p-3 bg-slate-50/50 border-t border-slate-100 text-center">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                        Exibindo últimas {notifications.length} notificações
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -283,10 +344,12 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
       </main>
 
       {/* Mobile Overlay */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300" onClick={() => setSidebarOpen(false)} />
-      )}
-    </div>
+      {
+        isSidebarOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300" onClick={() => setSidebarOpen(false)} />
+        )
+      }
+    </div >
   );
 };
 
