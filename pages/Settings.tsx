@@ -4,9 +4,14 @@ import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
 import { UserRole, AppState, Company, ServiceOrder, User, Customer } from '../types';
 
-const Settings: React.FC = () => {
-  const [company, setCompany] = useState<Company | null>(null);
-  const [loading, setLoading] = useState(true);
+interface SettingsProps {
+  company: Company | null;
+  onCompanyChange: (company: Company | null) => void;
+}
+
+const Settings: React.FC<SettingsProps> = ({ company: initialCompany, onCompanyChange }) => {
+  const [company, setCompany] = useState<Company | null>(initialCompany);
+  const [loading, setLoading] = useState(!initialCompany);
   const [isExporting, setIsExporting] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [newType, setNewType] = useState('');
@@ -66,6 +71,7 @@ const Settings: React.FC = () => {
       };
       await dbService.updateCompany(company.id, { settings: updatedSettings });
       setCompany({ ...company, settings: updatedSettings });
+      onCompanyChange({ ...company, settings: updatedSettings });
       setNewType('');
       showToast('Natureza cadastrada!', 'success');
     } catch (error) {
@@ -94,6 +100,7 @@ const Settings: React.FC = () => {
       // Aqui apenas atualizamos as configurações da empresa primeiro.
       await dbService.updateCompany(company.id, { settings: updatedSettings });
       setCompany({ ...company, settings: updatedSettings });
+      onCompanyChange({ ...company, settings: updatedSettings });
       setEditingType(null);
       showToast('Nomenclatura atualizada!', 'success');
     } catch (error) {
@@ -115,6 +122,7 @@ const Settings: React.FC = () => {
       };
       await dbService.updateCompany(company.id, { settings: updatedSettings });
       setCompany({ ...company, settings: updatedSettings });
+      onCompanyChange({ ...company, settings: updatedSettings });
       showToast('Natureza removida.', 'success');
     } catch (error) {
       showToast('Erro ao remover natureza.', 'error');

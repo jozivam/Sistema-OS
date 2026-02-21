@@ -62,8 +62,22 @@ const App: React.FC = () => {
     initAuth();
   }, []);
 
-  const handleUserChange = (user: User | null) => {
+  const handleUserChange = async (user: User | null) => {
     setCurrentUser(user);
+    if (user?.companyId) {
+      try {
+        const companyData = await dbService.getCompany(user.companyId);
+        setCompany(companyData);
+      } catch (error) {
+        console.error("Erro ao carregar dados da empresa após login:", error);
+      }
+    } else {
+      setCompany(null);
+    }
+  };
+
+  const handleCompanyChange = (newCompany: Company | null) => {
+    setCompany(newCompany);
   };
 
   if (loading) {
@@ -84,6 +98,7 @@ const App: React.FC = () => {
               currentUser={currentUser}
               company={company}
               onUserChange={handleUserChange}
+              onCompanyChange={handleCompanyChange}
             />
           }
         />
@@ -96,9 +111,10 @@ interface AppContentProps {
   currentUser: User | null;
   company: Company | null;
   onUserChange: (user: User | null) => void;
+  onCompanyChange: (company: Company | null) => void;
 }
 
-const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserChange }) => {
+const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserChange, onCompanyChange }) => {
   if (!currentUser) {
     return (
       <Routes>
@@ -113,7 +129,12 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserCha
   const isAdmin = currentUser.role === UserRole.ADMIN;
 
   return (
-    <Layout user={currentUser} company={company} onUserChange={onUserChange}>
+    <Layout
+      user={currentUser}
+      company={company}
+      onUserChange={onUserChange}
+      onCompanyChange={onCompanyChange}
+    >
       <Routes>
         <Route path="/" element={<Navigate to={isDev ? "/developer" : "/dashboard"} replace />} />
         {isDev && (
@@ -142,7 +163,7 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserCha
             <Route path="/ordens" element={<Orders />} />
             <Route path="/ordens/:id" element={<OrderDetails />} />
             <Route path="/usuarios" element={isAdmin ? <Users /> : <Navigate to="/dashboard" replace />} />
-            <Route path="/configuracoes" element={isAdmin ? <Settings /> : <Navigate to="/dashboard" replace />} />
+            <Route path="/configuracoes" element={isAdmin ? <Settings company={company} onCompanyChange={onCompanyChange} /> : <Navigate to="/dashboard" replace />} />
           </>
         )}
         <Route path="*" element={<Navigate to={isDev ? "/developer" : "/dashboard"} replace />} />
