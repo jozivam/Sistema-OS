@@ -12,6 +12,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isOffline, setIsOffline] = useState(authService.isPlaceholderClient());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,10 +52,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {isOffline && (
+              <div className="bg-amber-50 text-amber-700 p-4 rounded-lg text-[10px] font-black uppercase flex items-start gap-2 border border-amber-200 mb-4">
+                <i className="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
+                <div>
+                  <p>Supabase não configurado!</p>
+                  <p className="font-medium normal-case mt-1">O arquivo .env.local não foi encontrado ou está incompleto. O sistema está em modo offline (somente demonstração).</p>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-50 text-red-600 p-4 rounded-lg text-xs font-black uppercase flex items-start gap-2 border border-red-100 animate-in fade-in slide-in-from-top-2">
                 <i className="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
-                <span>{error}</span>
+                <div className="flex flex-col gap-1">
+                  <span>{error}</span>
+                  {error.includes("placeholder") && <span className="text-[10px] font-medium normal-case">Dica: Configure a URL do Supabase no .env</span>}
+                </div>
               </div>
             )}
 

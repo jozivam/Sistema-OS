@@ -90,5 +90,9 @@ export const authService = {
 
         if (error) throw error;
         return data;
+    },
+
+    isPlaceholderClient() {
+        return (supabase as any).supabaseUrl === 'https://placeholder.supabase.co';
     }
 };

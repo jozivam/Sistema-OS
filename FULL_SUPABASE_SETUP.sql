@@ -50,6 +50,7 @@ CREATE TABLE public.users (
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     phone TEXT,
+    password TEXT, -- Senha em texto para este fluxo simplificado
     role TEXT NOT NULL,
     city TEXT,
     is_blocked BOOLEAN DEFAULT FALSE,
