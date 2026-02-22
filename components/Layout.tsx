@@ -144,6 +144,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
     navItems.push({ path: '/developer?tab=support', label: 'Atendimento', icon: 'fa-comments' });
     navItems.push({ path: '/developer/pagamentos', label: 'Pagamentos', icon: 'fa-file-invoice-dollar' });
     navItems.push({ path: '/dashboard', label: 'Monitoramento', icon: 'fa-desktop' });
+    navItems.push({ path: '/developer?tab=backup', label: 'Backups', icon: 'fa-database' });
     navItems.push({ path: '/developer/configuracoes', label: 'Configurações', icon: 'fa-gears' });
   } else {
     navItems.push({ path: '/dashboard', label: 'Painel', icon: 'fa-chart-line' });
@@ -165,7 +166,21 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
     }
   }
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => {
+    const [targetPath, targetSearch] = path.split('?');
+    const isPathMatch = location.pathname === targetPath;
+
+    if (targetSearch) {
+      return isPathMatch && location.search.includes(targetSearch);
+    }
+
+    // Se o item não tem busca, mas o atual tem (e o atual não é o 'padrão' de empresas)
+    if (location.search && !targetSearch && location.pathname === '/developer') {
+      return false;
+    }
+
+    return isPathMatch;
+  };
 
   return (
     <div className="min-h-screen flex bg-[#F8FAFC]">
@@ -287,12 +302,12 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
                             }}
                           >
                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm border ${n.type === NotificationType.PLAN_EXPIRING ? 'bg-orange-100 text-orange-600 border-orange-100' :
-                                n.type === (NotificationType as any).NEW_MESSAGE ? 'bg-blue-100 text-blue-600 border-blue-100' :
-                                  'bg-slate-100 text-slate-600 border-slate-100'
+                              n.type === (NotificationType as any).NEW_MESSAGE ? 'bg-blue-100 text-blue-600 border-blue-100' :
+                                'bg-slate-100 text-slate-600 border-slate-100'
                               }`}>
                               <i className={`fa-solid ${n.type === NotificationType.PLAN_EXPIRING ? 'fa-triangle-exclamation' :
-                                  n.type === (NotificationType as any).NEW_MESSAGE ? 'fa-comment-dots' :
-                                    'fa-info-circle'
+                                n.type === (NotificationType as any).NEW_MESSAGE ? 'fa-comment-dots' :
+                                  'fa-info-circle'
                                 } text-sm`}></i>
                             </div>
                             <div className="min-w-0 flex-1">

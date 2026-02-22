@@ -194,8 +194,10 @@ export const dbService = {
     },
 
     // Clientes
-    async getCustomers(companyId: string): Promise<Customer[]> {
-        const { data, error } = await supabase.from('customers').select('*').eq('company_id', companyId);
+    async getCustomers(companyId?: string): Promise<Customer[]> {
+        let query = supabase.from('customers').select('*');
+        if (companyId) query = query.eq('company_id', companyId);
+        const { data, error } = await query;
         if (error) return [];
         return (data || []).map(mapCustomer);
     },
@@ -241,15 +243,13 @@ export const dbService = {
     },
 
     // Ordens de Serviço
-    async getOrders(companyId: string, techId?: string): Promise<ServiceOrder[]> {
+    async getOrders(companyId?: string, techId?: string): Promise<ServiceOrder[]> {
         let query = supabase
             .from('service_orders')
-            .select('*, customers(name), users(name)')
-            .eq('company_id', companyId);
+            .select('*, customers(name), users(name)');
 
-        if (techId) {
-            query = query.eq('tech_id', techId);
-        }
+        if (companyId) query = query.eq('company_id', companyId);
+        if (techId) query = query.eq('tech_id', techId);
 
         const { data, error } = await query.order('created_at', { ascending: false });
 
@@ -309,12 +309,14 @@ export const dbService = {
     },
 
     // Chat
-    async getMessages(companyId: string): Promise<ChatMessage[]> {
-        const { data, error } = await supabase
+    async getMessages(companyId?: string): Promise<ChatMessage[]> {
+        let query = supabase
             .from('chat_messages')
-            .select('*')
-            .eq('company_id', companyId)
-            .order('timestamp', { ascending: true });
+            .select('*');
+
+        if (companyId) query = query.eq('company_id', companyId);
+
+        const { data, error } = await query.order('timestamp', { ascending: true });
 
         if (error) return [];
         return (data || []).map(raw => ({
@@ -342,12 +344,14 @@ export const dbService = {
     },
 
     // Pagamentos de Empresas
-    async getCompanyPayments(companyId: string): Promise<CompanyPayment[]> {
-        const { data, error } = await supabase
+    async getCompanyPayments(companyId?: string): Promise<CompanyPayment[]> {
+        let query = supabase
             .from('company_payments')
-            .select('*')
-            .eq('company_id', companyId)
-            .order('payment_date', { ascending: false });
+            .select('*');
+
+        if (companyId) query = query.eq('company_id', companyId);
+
+        const { data, error } = await query.order('payment_date', { ascending: false });
 
         if (error) return [];
         return (data || []).map(raw => ({
@@ -404,6 +408,28 @@ export const dbService = {
     },
 
     // Métodos de Restauração (Batch Upsert)
+    async upsertCompanies(companies: Company[]) {
+        const data = companies.map(c => ({
+            id: c.id,
+            name: c.name,
+            corporate_name: c.corporateName,
+            trade_name: c.tradeName,
+            document: c.document,
+            email: c.email,
+            phone: c.phone,
+            address: c.address,
+            city: c.city,
+            plan: c.plan,
+            monthly_fee: c.monthlyFee,
+            status: c.status,
+            created_at: c.createdAt,
+            expires_at: c.expiresAt,
+            settings: c.settings
+        }));
+        const { error } = await supabase.from('companies').upsert(data, { onConflict: 'id' });
+        if (error) throw error;
+    },
+
     async upsertUsers(users: User[]) {
         const data = users.map(u => ({
             id: u.id,
@@ -416,7 +442,7 @@ export const dbService = {
             is_blocked: u.isBlocked,
             password: u.password
         }));
-        const { error } = await supabase.from('users').upsert(data);
+        const { error } = await supabase.from('users').upsert(data, { onConflict: 'id' });
         if (error) throw error;
     },
 
@@ -433,7 +459,7 @@ export const dbService = {
             notes: c.notes,
             created_at: c.createdAt
         }));
-        const { error } = await supabase.from('customers').upsert(data);
+        const { error } = await supabase.from('customers').upsert(data, { onConflict: 'id' });
         if (error) throw error;
     },
 
@@ -455,7 +481,7 @@ export const dbService = {
             posts: o.posts,
             attachments: o.attachments
         }));
-        const { error } = await supabase.from('service_orders').upsert(data);
+        const { error } = await supabase.from('service_orders').upsert(data, { onConflict: 'id' });
         if (error) throw error;
     },
 
@@ -470,7 +496,7 @@ export const dbService = {
             text: m.text,
             timestamp: m.timestamp
         }));
-        const { error } = await supabase.from('chat_messages').upsert(data);
+        const { error } = await supabase.from('chat_messages').upsert(data, { onConflict: 'id' });
         if (error) throw error;
     },
 
@@ -483,7 +509,7 @@ export const dbService = {
             plan_reference: p.planReference,
             expires_at_after: p.expiresAtAfter
         }));
-        const { error } = await supabase.from('company_payments').upsert(data);
+        const { error } = await supabase.from('company_payments').upsert(data, { onConflict: 'id' });
         if (error) throw error;
     },
 
