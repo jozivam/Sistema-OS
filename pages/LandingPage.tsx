@@ -3,7 +3,22 @@ import './LandingPage.css';
 
 const LandingPage: React.FC = () => {
     const [scrolled, setScrolled] = useState(false);
+    const [currentSlide, setCurrentSlide] = useState(0);
     const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+    const slides = [
+        '/assets/slide1.png',
+        '/assets/slide2.png',
+        '/assets/slide3.png',
+        '/assets/slide4.png'
+    ];
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentSlide((prev) => (prev + 1) % slides.length);
+        }, 5000);
+        return () => clearInterval(timer);
+    }, [slides.length]);
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 60);
@@ -77,10 +92,25 @@ const LandingPage: React.FC = () => {
                         <div className="mockup-bar">
                             <span></span><span></span><span></span>
                         </div>
-                        <img
-                            src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?auto=format&fit=crop&q=80&w=1000"
-                            alt="Dashboard OsRepo"
-                        />
+                        <div className="slideshow-container">
+                            {slides.map((slide, index) => (
+                                <img
+                                    key={index}
+                                    src={slide}
+                                    alt={`Técnico OsRepo Slide ${index + 1}`}
+                                    className={`slide-img ${currentSlide === index ? 'active' : ''}`}
+                                />
+                            ))}
+                        </div>
+                        <div className="slide-indicators">
+                            {slides.map((_, index) => (
+                                <span
+                                    key={index}
+                                    className={`indicator ${currentSlide === index ? 'active' : ''}`}
+                                    onClick={() => setCurrentSlide(index)}
+                                ></span>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </header>
