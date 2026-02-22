@@ -3,22 +3,7 @@ import './LandingPage.css';
 
 const LandingPage: React.FC = () => {
     const [scrolled, setScrolled] = useState(false);
-    const [currentSlide, setCurrentSlide] = useState(0);
     const [openFaq, setOpenFaq] = useState<number | null>(null);
-
-    const slides = [
-        '/assets/slide1.png',
-        '/assets/slide2.png',
-        '/assets/slide3.png',
-        '/assets/slide4.png'
-    ];
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrentSlide((prev) => (prev + 1) % slides.length);
-        }, 5000);
-        return () => clearInterval(timer);
-    }, [slides.length]);
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 60);
@@ -62,60 +47,35 @@ const LandingPage: React.FC = () => {
 
             {/* Hero Section */}
             <header className="hero" id="home">
-                <div className="hero-bg-orb orb-1"></div>
-                <div className="hero-bg-orb orb-2"></div>
-                <div className="hero-content animate-fade-up">
-                    <span className="hero-badge">
-                        <i className="fa-solid fa-bolt"></i> O Repositório Digital das Suas O.S.
-                    </span>
-                    <h1>Gerencie Ordens de Serviço com <span className="text-gradient">Agilidade e Controle Total</span></h1>
-                    <p>
-                        Transforme a maneira como sua empresa controla atendimentos, técnicos e clientes.
-                        Automatize processos, reduza erros e aumente sua produtividade do dia 1.
-                    </p>
-                    <div className="hero-btns">
-                        <a href="#/login" className="btn-primary">
-                            <i className="fa-solid fa-rocket"></i> Testar Gratuitamente
-                        </a>
-                        <a href="#how-it-works" className="btn-outline">
-                            <i className="fa-solid fa-play"></i> Ver Como Funciona
-                        </a>
-                    </div>
-                    <div className="hero-trust">
-                        <span><i className="fa-solid fa-shield-halved"></i> Sem cartão de crédito</span>
-                        <span><i className="fa-solid fa-check-circle"></i> 14 dias grátis</span>
-                        <span><i className="fa-solid fa-lock"></i> Dados seguros</span>
-                    </div>
-                </div>
-                <div className="hero-image animate-fade-left">
-                    <div className="hero-mockup-frame">
-                        <div className="mockup-bar">
-                            <span></span><span></span><span></span>
+                <div className="hero-overlay"></div>
+                <div className="hero-content-wrapper">
+                    <div className="hero-text-content animate-fade-up">
+                        <span className="hero-badge">
+                            <i className="fa-solid fa-bolt"></i> O REPOSITÓRIO DIGITAL DAS SUAS O.S.
+                        </span>
+                        <h1>Gerencie Ordens de<br />Serviço com <span className="text-gradient">Agilidade e Controle Total</span></h1>
+                        <p className="hero-description">
+                            Transforme a maneira como sua empresa controla atendimentos, técnicos e clientes.
+                            Automatize processos, reduza erros e aumente sua produtividade no dia a dia.
+                        </p>
+                        <div className="hero-btns">
+                            <a href="#/login" className="btn-primary btn-large">
+                                <i className="fa-solid fa-rocket"></i> Testar Gratuitamente
+                            </a>
+                            <a href="#how-it-works" className="btn-outline btn-large">
+                                <i className="fa-solid fa-play"></i> Ver Como Funciona
+                            </a>
                         </div>
-                        <div className="slideshow-container">
-                            {slides.map((slide, index) => (
-                                <img
-                                    key={index}
-                                    src={slide}
-                                    alt={`Técnico OsRepo Slide ${index + 1}`}
-                                    className={`slide-img ${currentSlide === index ? 'active' : ''}`}
-                                />
-                            ))}
-                        </div>
-                        <div className="slide-indicators">
-                            {slides.map((_, index) => (
-                                <span
-                                    key={index}
-                                    className={`indicator ${currentSlide === index ? 'active' : ''}`}
-                                    onClick={() => setCurrentSlide(index)}
-                                ></span>
-                            ))}
+                        <div className="hero-trust">
+                            <span><i className="fa-solid fa-shield-halved"></i> Sem cartão de crédito</span>
+                            <span><i className="fa-solid fa-check-circle"></i> 14 dias grátis</span>
+                            <span><i className="fa-solid fa-lock"></i> Dados seguros</span>
                         </div>
                     </div>
                 </div>
             </header>
 
-            {/* Stats Section */}
+            {/* Stats Section - Oculto conforme solicitação 
             <section className="stats-section">
                 <div className="stats-grid">
                     <div className="stat-card">
@@ -140,6 +100,7 @@ const LandingPage: React.FC = () => {
                     </div>
                 </div>
             </section>
+            */}
 
             {/* How It Works */}
             <section className="how-it-works" id="how-it-works">
@@ -194,7 +155,6 @@ const LandingPage: React.FC = () => {
             {/* Benefícios */}
             <section className="benefits" id="benefits">
                 <div className="section-header center">
-                    <span className="section-badge">Benefícios</span>
                     <h2>Tudo que você precisa em um único lugar</h2>
                     <p>Uma plataforma completa, pensada para a realidade das empresas brasileiras de serviços.</p>
                 </div>
@@ -229,7 +189,7 @@ const LandingPage: React.FC = () => {
                     </div>
                     <div className="benefit-card">
                         <div className="benefit-icon-wrap">
-                            <i className="fa-solid fa-cloud-lock"></i>
+                            <i className="fa-solid fa-shield-halved"></i>
                         </div>
                         <h3>Segurança de Dados</h3>
                         <p>100% na nuvem, backup automático, criptografia e conformidade com a LGPD.</p>
@@ -310,7 +270,7 @@ const LandingPage: React.FC = () => {
                 </div>
             </section>
 
-            {/* Testimonials */}
+            {/* Testimonials - Oculto conforme solicitação 
             <section className="testimonials">
                 <div className="section-header center">
                     <span className="section-badge">Depoimentos</span>
@@ -335,6 +295,7 @@ const LandingPage: React.FC = () => {
                     ))}
                 </div>
             </section>
+            */}
 
             {/* FAQ */}
             <section className="faq" id="faq">
