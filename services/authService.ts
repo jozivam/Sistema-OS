@@ -10,6 +10,9 @@ const SESSION_KEY = 'sistema_os_session';
 
 export const authService = {
     async signIn(email: string, password: string) {
+        console.group('DEBUG LOGIN');
+        console.log('Tentando logar com:', email);
+
         // Busca o usuário diretamente na tabela pública
         const { data: userData, error: userError } = await supabase
             .from('users')
@@ -18,9 +21,20 @@ export const authService = {
             .eq('password', password) // Simples conferência de texto (devemos usar hash no futuro)
             .single();
 
-        if (userError || !userData) {
+        if (userError) {
+            console.error('Erro de banco:', userError);
+            console.groupEnd();
             throw new Error('E-mail ou senha incorretos.');
         }
+
+        if (!userData) {
+            console.warn('Nenhum usuário encontrado com esses dados.');
+            console.groupEnd();
+            throw new Error('E-mail ou senha incorretos.');
+        }
+
+        console.log('Usuário encontrado:', userData);
+        console.groupEnd();
 
         if (userData.is_blocked) {
             throw new Error('Este usuário está bloqueado.');

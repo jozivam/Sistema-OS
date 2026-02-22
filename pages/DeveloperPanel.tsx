@@ -202,9 +202,8 @@ const DeveloperPanel: React.FC = () => {
     };
   }, []);
 
-  // Filtrar para remover a empresa do desenvolvedor das métricas e listagem
   const clientCompanies = useMemo(() => {
-    return companies.filter(c => c.id !== 'dev-corp');
+    return companies.filter(c => c.id !== '00000000-0000-0000-0000-000000000000');
   }, [companies]);
 
   const stats = useMemo(() => {
