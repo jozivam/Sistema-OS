@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
+import { isTrialUser, TRIAL_ADMIN_ID, TRIAL_TECH_ID, TRIAL_COMPANY_ID } from '../services/trialService';
 import { User, UserRole } from '../types';
 import { Link } from 'react-router-dom';
 
@@ -24,14 +25,27 @@ const Users: React.FC = () => {
     isBlocked: false
   });
 
+  const [isTrial, setIsTrial] = useState(false);
+
   const loadData = async () => {
     try {
       const user = await authService.getCurrentUser();
       if (!user) return;
       setCurrentUser(user);
+      const trial = isTrialUser(user);
+      setIsTrial(trial);
 
-      const fetchedUsers = await dbService.getUsers(user.companyId);
-      setUsers(fetchedUsers);
+      if (trial) {
+        // Modo trial: exibe os dois usuários demo
+        const demoUsers: User[] = [
+          { id: TRIAL_ADMIN_ID, name: user.name + ' (Admin)', email: 'admin@demo.com', phone: '(11)99999-9999', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID, city: 'São Paulo', isBlocked: false },
+          { id: TRIAL_TECH_ID, name: user.name + ' (Técnico)', email: 'tecnico@demo.com', phone: '(11)98888-8888', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID, city: 'São Paulo', isBlocked: false },
+        ];
+        setUsers(demoUsers);
+      } else {
+        const fetchedUsers = await dbService.getUsers(user.companyId);
+        setUsers(fetchedUsers);
+      }
     } catch (error) {
       console.error("Erro ao carregar usuários:", error);
     } finally {
@@ -84,6 +98,11 @@ const Users: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isTrial) {
+      setModalOpen(false);
+      alert('Modo demonstração: o gerenciamento de usuários está disponível no sistema completo.');
+      return;
+    }
     try {
       if (editingUserId) {
         await dbService.updateUser(editingUserId, {
@@ -93,7 +112,7 @@ const Users: React.FC = () => {
           role: formData.role,
           city: formData.city,
           isBlocked: formData.isBlocked,
-          ...(formData.password && { password: formData.password }) // Only send password if it's not empty
+          ...(formData.password && { password: formData.password })
         });
         setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
       } else {

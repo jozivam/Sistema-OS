@@ -177,7 +177,12 @@ const OrderDetails: React.FC = () => {
       };
 
       if (isTrialUser(currentUser)) {
-        // Modo trial: não precisa chamar dbService, apenas atualiza estado
+        // Modo trial: atualiza estado E persiste no sessionStorage
+        const allOrders = getTrialOrders();
+        const idx = allOrders.findIndex(o => o.id === updatedOrder.id);
+        if (idx >= 0) allOrders[idx] = updatedOrder;
+        else allOrders.unshift(updatedOrder);
+        saveTrialOrders(allOrders);
         setOrder(updatedOrder);
         if (type !== 'none') setToast({ message: 'Dados da OS salvos!', type: 'success' });
         setIsSaving(false); setIsSavingDesc(false); setIsSavingReport(false);

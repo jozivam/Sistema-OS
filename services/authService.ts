@@ -80,10 +80,22 @@ export const authService = {
     },
 
     async getCurrentUser(): Promise<User | null> {
+        // Primeiro tenta a sessão normal
         const session = sessionStorage.getItem(SESSION_KEY);
-        if (!session) return null;
+        if (session) {
+            try {
+                return JSON.parse(session);
+            } catch {
+                return null;
+            }
+        }
+
+        // Se não houver sessão normal, tenta carregar a sessão Trial (se ativa)
         try {
-            return JSON.parse(session);
+            // Importação dinâmica para evitar dependência circular pesada se necessário, 
+            // mas aqui podemos usar direto se importado no topo
+            const { getCurrentTrialUser } = await import('./trialService');
+            return getCurrentTrialUser();
         } catch {
             return null;
         }

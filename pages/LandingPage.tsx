@@ -283,7 +283,7 @@ const LandingPage: React.FC = () => {
                                     <li><i className="fa-solid fa-check"></i> Suporte via chat</li>
                                     <li className="disabled"><i className="fa-solid fa-xmark"></i> Relatórios com IA</li>
                                 </ul>
-                                <a href="#/trial" className="btn-pricing-outline">Começar Agora</a>
+                                <a href={`#/checkout?plan=OURO&period=${selectedPeriod}`} className="btn-pricing-outline">Começar Agora</a>
                             </div>
                         );
                     })()}
@@ -314,7 +314,7 @@ const LandingPage: React.FC = () => {
                                     <li><i className="fa-solid fa-check"></i> Anexos em O.S.</li>
                                     <li><i className="fa-solid fa-check"></i> Suporte prioritário</li>
                                 </ul>
-                                <a href="#/trial" className="btn-pricing-primary">Testar Agora</a>
+                                <a href={`#/checkout?plan=DIAMANTE&period=${selectedPeriod}`} className="btn-pricing-primary">Começar agora</a>
                             </div>
                         );
                     })()}

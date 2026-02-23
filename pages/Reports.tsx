@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
+import { isTrialUser, getTrialOrders, getTrialCustomers, TRIAL_ADMIN_ID, TRIAL_TECH_ID, TRIAL_COMPANY_ID } from '../services/trialService';
 import { OrderStatus, UserRole, ServiceOrder, User, Company } from '../types';
 
 const Reports: React.FC = () => {
@@ -30,15 +31,33 @@ const Reports: React.FC = () => {
       if (!user) return;
       setCurrentUser(user);
 
-      const [usersData, ordersData, companyData] = await Promise.all([
-        dbService.getUsers(user.companyId),
-        dbService.getOrders(user.companyId),
-        dbService.getCompany(user.companyId)
-      ]);
-
-      setUsers(usersData);
-      setOrders(ordersData);
-      setCompany(companyData);
+      if (isTrialUser(user)) {
+        // Modo trial: dados do sessionStorage
+        const trialOrders = getTrialOrders();
+        const trialUsers: User[] = [
+          { id: TRIAL_ADMIN_ID, name: user.name + ' (Admin)', email: 'admin@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID, isBlocked: false },
+          { id: TRIAL_TECH_ID, name: user.name + ' (Técnico)', email: 'tecnico@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID, isBlocked: false },
+        ];
+        const trialCompany: Company = {
+          id: TRIAL_COMPANY_ID, name: 'Demo', corporateName: 'Demo', tradeName: 'Demo',
+          document: '', email: '', phone: '', address: '', city: '',
+          plan: 'DIAMANTE' as any, period: 'MENSAL' as any, monthlyFee: 0,
+          status: 'ACTIVE', createdAt: new Date().toISOString(),
+          settings: { enableAI: true, enableAttachments: true, enableChat: true, enableHistory: true, orderTypes: ['Instalação', 'Manutenção', 'Reparo', 'Configuração', 'Visita Técnica'] }
+        };
+        setOrders(trialOrders);
+        setUsers(trialUsers);
+        setCompany(trialCompany);
+      } else {
+        const [usersData, ordersData, companyData] = await Promise.all([
+          dbService.getUsers(user.companyId),
+          dbService.getOrders(user.companyId),
+          dbService.getCompany(user.companyId)
+        ]);
+        setUsers(usersData);
+        setOrders(ordersData);
+        setCompany(companyData);
+      }
     } catch (error) {
       console.error("Erro ao carregar dados para relatórios:", error);
     } finally {
@@ -50,7 +69,7 @@ const Reports: React.FC = () => {
     loadData();
   }, []);
 
-  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.DEVELOPER;
+  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.DEVELOPER || isTrialUser(currentUser);
 
   const stats = useMemo(() => {
     const filterBase = (o: ServiceOrder) => {

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
+import { isTrialUser, getTrialCustomers, saveTrialCustomers, getTrialOrders } from '../services/trialService';
 import { OrderStatus, Customer, UserRole, ServiceOrder, User } from '../types';
 
 const CustomerDetails: React.FC = () => {
@@ -12,6 +13,7 @@ const CustomerDetails: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
+  const [isTrial, setIsTrial] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -31,11 +33,25 @@ const CustomerDetails: React.FC = () => {
       const user = await authService.getCurrentUser();
       if (!user) return;
       setCurrentUser(user);
+      const trial = isTrialUser(user);
+      setIsTrial(trial);
 
-      const [customerData, allOrders] = await Promise.all([
-        dbService.getCustomer(id),
-        dbService.getOrders(user.companyId)
-      ]);
+      let customerData: Customer | null = null;
+      let allOrders: ServiceOrder[] = [];
+
+      if (trial) {
+        // Modo trial: carregar do sessionStorage
+        const trialCustomers = getTrialCustomers();
+        customerData = trialCustomers.find(c => c.id === id) || null;
+        allOrders = getTrialOrders();
+      } else {
+        const [fetched, fetchedOrders] = await Promise.all([
+          dbService.getCustomer(id),
+          dbService.getOrders(user.companyId)
+        ]);
+        customerData = fetched;
+        allOrders = fetchedOrders;
+      }
 
       if (customerData) {
         setCustomer(customerData);
@@ -111,18 +127,22 @@ const CustomerDetails: React.FC = () => {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id) return;
+    if (!id || !customer) return;
 
     try {
-      await dbService.updateCustomer(id, formData);
-      setCustomer({ ...customer, ...formData });
+      if (isTrial) {
+        // Modo trial: salvar no sessionStorage
+        const updatedCustomer: Customer = { ...customer, ...formData };
+        const trialList = getTrialCustomers();
+        const updatedList = trialList.map(c => c.id === id ? updatedCustomer : c);
+        saveTrialCustomers(updatedList);
+        setCustomer(updatedCustomer);
+      } else {
+        await dbService.updateCustomer(id, formData);
+        setCustomer({ ...customer, ...formData });
+      }
 
-      // Sincronizar nome nas OS (Isso pode ser feito no lado do servidor ou em massa se necessário)
-      // No Supabase, se usamos relacionamentos, o nome do cliente deveria vir do JOIN.
-      // Se estamos desnormalizando, precisamos atualizar as OS.
-      // Para manter a funcionalidade original de atualizar a lista local:
       setOrders(prev => prev.map(o => o.customerId === id ? { ...o, customerName: formData.name } : o));
-
       setEditModalOpen(false);
       setToast({ message: 'Dados do cliente atualizados com sucesso!', type: 'success' });
     } catch (error) {

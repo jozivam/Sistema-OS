@@ -75,62 +75,97 @@ function buildDemoCustomers(): Customer[] {
         {
             id: 'trial-client-1',
             companyId: TRIAL_COMPANY_ID,
-            name: 'João Silva',
-            phone: '(11) 9 1111-2222',
-            city: 'São Paulo',
-            address: 'Rua das Flores, 45',
-            sector: 'Residencial',
-            notes: 'Cliente desde 2023. Prefere atendimento à tarde.',
+            name: 'Oficina do Zé',
+            phone: '(11) 98888-1111',
+            city: 'São Paulo/SP',
+            address: 'Av. Industrial',
+            number: '500',
+            sector: 'Lapa',
+            notes: 'Falar com José ou Ricardo. Oficina mecânica de grande porte.',
             createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
         },
         {
             id: 'trial-client-2',
             companyId: TRIAL_COMPANY_ID,
-            name: 'Maria Tecnologia Ltda.',
-            phone: '(11) 9 3333-4444',
-            city: 'Guarulhos',
-            address: 'Av. Industrial, 200',
-            sector: 'Empresarial',
-            notes: 'Empresa com 20 computadores. Contrato de manutenção mensal.',
-            createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+            name: 'Cafeteria Grão de Ouro',
+            phone: '(11) 97777-2222',
+            city: 'Campinas/SP',
+            address: 'Rua das Flores',
+            number: '120',
+            sector: 'Cambuí',
+            notes: 'Rede de cafeterias. Requer nota fiscal detalhada.',
+            createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+
+        {
+            id: 'trial-client-4',
+            companyId: TRIAL_COMPANY_ID,
+            name: 'Papelaria Central',
+            phone: '(15) 95555-4444',
+            city: 'Sorocaba/SP',
+            address: 'Rua do Comércio',
+            number: '10',
+            sector: 'Centro',
+            notes: 'Loja tradicional. Fechada para almoço entre 12h e 13h.',
+            createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
         },
         {
-            id: 'trial-client-3',
+            id: 'trial-client-5',
             companyId: TRIAL_COMPANY_ID,
-            name: 'Pedro Eletrodomésticos',
-            phone: '(11) 9 5555-6666',
-            city: 'São Paulo',
-            address: 'Rua do Comércio, 78',
-            sector: 'Comércio',
-            notes: 'Loja de eletrodomésticos. Chama para instalação de equipamentos.',
-            createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+            name: 'Condomínio Solar das Flores',
+            phone: '(11) 94444-5555',
+            city: 'São Paulo/SP',
+            address: 'Rua das Hortênsias',
+            number: '2000',
+            sector: 'Morumbi',
+            notes: 'Condomínio residencial. Falar com Zelador Marcos.',
+            createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+            id: 'trial-client-6',
+            companyId: TRIAL_COMPANY_ID,
+            name: 'Gráfica Impressa',
+            phone: '(19) 93333-6666',
+            city: 'Campinas/SP',
+            address: 'Rua da Tecnologia',
+            number: '80',
+            sector: 'Barão Geraldo',
+            notes: 'Gráfica rápida. Máquinas sensíveis a poeira.',
+            createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
         }
     ];
 }
 
 function buildDemoOrders(techName: string): ServiceOrder[] {
     const now = new Date();
+    const d = (offsetDays: number, hour = 9, min = 0) => {
+        const d = new Date(now);
+        d.setDate(d.getDate() + offsetDays);
+        d.setHours(hour, min, 0, 0);
+        return d.toISOString();
+    };
+
     return [
         {
             id: 'trial-order-1',
             companyId: TRIAL_COMPANY_ID,
             customerId: 'trial-client-1',
-            customerName: 'João Silva',
+            customerName: 'Oficina do Zé',
             techId: TRIAL_TECH_ID,
             techName: techName,
             type: 'Manutenção',
-            description: 'Computador lento, travando constantemente. Cliente relata que o problema começou após atualização do Windows.',
+            description: 'Manutenção preventiva no compressor de ar principal. Verificação de vazamentos e troca de óleo.',
             aiReport: '',
             status: OrderStatus.IN_PROGRESS,
-            createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            scheduledDate: now.toISOString().split('T')[0],
+            createdAt: d(-2, 14, 0),
+            scheduledDate: d(0, 12, 57),
             posts: [
                 {
                     id: 'trial-post-1',
                     userId: TRIAL_TECH_ID,
                     userName: techName,
-                    content: 'Realizei limpeza de arquivos temporários e desfragmentação do HD. Aguardando análise de vírus.',
-                    createdAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+                    content: 'Iniciada drenagem do óleo antigo. Identificado pequeno vazamento na válvula de segurança.',
+                    createdAt: d(-1, 15, 30)
                 }
             ],
             attachments: []
@@ -139,55 +174,112 @@ function buildDemoOrders(techName: string): ServiceOrder[] {
             id: 'trial-order-2',
             companyId: TRIAL_COMPANY_ID,
             customerId: 'trial-client-2',
-            customerName: 'Maria Tecnologia Ltda.',
+            customerName: 'Cafeteria Grão de Ouro',
             techId: TRIAL_TECH_ID,
             techName: techName,
             type: 'Instalação',
-            description: 'Instalação de 5 novos computadores na sede da empresa. Configuração de rede e domínio.',
+            description: 'Instalação de nova máquina de espresso e moedor profissional. Ajuste de pressão e moagem.',
             aiReport: '',
             status: OrderStatus.OPEN,
-            createdAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            scheduledDate: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            createdAt: d(-1, 10, 0),
+            scheduledDate: d(1, 12, 57),
+            posts: [],
+            attachments: []
+        },
+
+        {
+            id: 'trial-order-4',
+            companyId: TRIAL_COMPANY_ID,
+            customerId: 'trial-client-2',
+            customerName: 'Cafeteria Grão de Ouro',
+            techId: TRIAL_TECH_ID,
+            techName: techName,
+            type: 'Orçamento',
+            description: 'Orçamento para sistema de filtragem de água industrial (osmose reversa).',
+            aiReport: '',
+            status: OrderStatus.OPEN,
+            createdAt: d(-3, 11, 0),
+            scheduledDate: d(3, 12, 57),
             posts: [],
             attachments: []
         },
         {
-            id: 'trial-order-3',
+            id: 'trial-order-5',
             companyId: TRIAL_COMPANY_ID,
-            customerId: 'trial-client-3',
-            customerName: 'Pedro Eletrodomésticos',
+            customerId: 'trial-client-4',
+            customerName: 'Papelaria Central',
             techId: TRIAL_TECH_ID,
             techName: techName,
-            type: 'Reparo',
-            description: 'Impressora fiscal não funciona. Erro ao emitir NFC-e.',
-            aiReport: 'Com base no histórico da O.S., o problema está relacionado ao driver da impressora fiscal. Recomenda-se reinstalar o driver e verificar a conexão COM.',
-            status: OrderStatus.FINISHED,
-            createdAt: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            finishedAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+            type: 'Configuração',
+            description: 'Configuração de rede Wi-Fi para clientes e novo sistema de segurança (CFTV).',
+            aiReport: '',
+            status: OrderStatus.PAUSED,
+            createdAt: d(-5, 9, 0),
+            scheduledDate: d(-1, 14, 0),
             posts: [
                 {
-                    id: 'trial-post-2',
+                    id: 'trial-post-5',
                     userId: TRIAL_TECH_ID,
                     userName: techName,
-                    content: 'Reinstalei o driver da impressora Daruma FS-600. Testado com sucesso. O.S. encerrada.',
-                    createdAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+                    content: 'Aguardando entrega das câmeras IP (atraso do fornecedor).',
+                    createdAt: d(-2, 10, 0)
                 }
             ],
             attachments: []
         },
         {
-            id: 'trial-order-4',
+            id: 'trial-order-6',
             companyId: TRIAL_COMPANY_ID,
-            customerId: 'trial-client-1',
-            customerName: 'João Silva',
+            customerId: 'trial-client-5',
+            customerName: 'Condomínio Solar das Flores',
             techId: TRIAL_TECH_ID,
             techName: techName,
-            type: 'Configuração',
-            description: 'Configuração de roteador e extensão de Wi-Fi para cobertura em toda a residência.',
+            type: 'Visita Técnica',
+            description: 'Verificação periódica dos motores dos portões eletrônicos.',
             aiReport: '',
-            status: OrderStatus.OPEN,
-            createdAt: new Date().toISOString(),
+            status: OrderStatus.FINISHED,
+            createdAt: d(-10, 8, 0),
+            finishedAt: d(-8, 11, 0),
             posts: [],
+            attachments: []
+        },
+        {
+            id: 'trial-order-7',
+            companyId: TRIAL_COMPANY_ID,
+            customerId: 'trial-client-6',
+            customerName: 'Gráfica Impressa',
+            techId: TRIAL_TECH_ID,
+            techName: techName,
+            type: 'Manutenção',
+            description: 'Troca de cilindros e limpeza interna da impressora offset.',
+            aiReport: '',
+            status: OrderStatus.FINISHED,
+            createdAt: d(-15, 14, 0),
+            finishedAt: d(-14, 17, 30),
+            posts: [],
+            attachments: []
+        },
+        {
+            id: 'trial-order-8',
+            companyId: TRIAL_COMPANY_ID,
+            customerId: 'trial-client-1',
+            customerName: 'Oficina do Zé',
+            techId: TRIAL_TECH_ID,
+            techName: techName,
+            type: 'Reparo',
+            description: 'Reparo no elevador hidráulico nº 3. Mangueira estourada.',
+            aiReport: '',
+            status: OrderStatus.CANCELLED,
+            createdAt: d(-20, 10, 0),
+            posts: [
+                {
+                    id: 'trial-post-8',
+                    userId: TRIAL_ADMIN_ID,
+                    userName: 'Administrador',
+                    content: 'Cancelado pelo cliente — consertou por conta própria.',
+                    createdAt: d(-19, 14, 0)
+                }
+            ],
             attachments: []
         }
     ];
@@ -250,12 +342,34 @@ export function switchTrialRole(): User | null {
 
 export function getTrialCustomers(): Customer[] {
     const raw = sessionStorage.getItem(TRIAL_CUSTOMERS_KEY);
+
+    // Auto-update se estiver vazio ou se detectar dados "antigos" (ex: sem Oficina do Zé)
+    const needsUpdate = !raw || raw === '[]' || (raw && !raw.includes('Oficina do Zé'));
+
+    if (needsUpdate && isActiveTrial()) {
+        const customers = buildDemoCustomers();
+        saveTrialCustomers(customers);
+        return customers;
+    }
+
     if (!raw) return [];
     try { return JSON.parse(raw); } catch { return []; }
 }
 
 export function getTrialOrders(): ServiceOrder[] {
     const raw = sessionStorage.getItem(TRIAL_ORDERS_KEY);
+
+    // Auto-update se estiver vazio ou se detectar dados "antigos"
+    const needsUpdate = !raw || raw === '[]' || (raw && !raw.includes('trial-order-4'));
+
+    if (needsUpdate && isActiveTrial()) {
+        const session = JSON.parse(sessionStorage.getItem(TRIAL_SESSION_KEY) || '{}');
+        const techName = session.tech?.name || 'Técnico Demo';
+        const orders = buildDemoOrders(techName);
+        saveTrialOrders(orders);
+        return orders;
+    }
+
     if (!raw) return [];
     try { return JSON.parse(raw); } catch { return []; }
 }

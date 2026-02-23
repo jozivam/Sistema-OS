@@ -12,6 +12,7 @@ import Layout from './components/Layout';
 // Pages
 import Login from './pages/Login';
 import TrialPage from './pages/TrialPage';
+import CheckoutPage from './pages/CheckoutPage';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import CustomerDetails from './pages/CustomerDetails';
@@ -161,6 +162,7 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserCha
           }
         />
         <Route path="/trial" element={<TrialPage onLogin={onUserChange} />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
