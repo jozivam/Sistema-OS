@@ -344,8 +344,8 @@ const Chat: React.FC<ChatProps> = ({ company }) => {
               </div>
             </div>
 
-            {/* Balões de Mensagens */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50/30 custom-scrollbar">
+            {/* Balões de Mensagens - Fixed height with scroll */}
+            <div className="flex-1 min-h-[400px] max-h-[600px] overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50/30 custom-scrollbar relative">
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.userId === currentUser?.id ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
                   <div className={`max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-2xl shadow-sm ${msg.userId === currentUser?.id
