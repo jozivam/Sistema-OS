@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
-import { AppState, CompanyPayment, Company, CompanyPlan, User } from '../types';
+import { CompanyPayment, Company, CompanyPlan, CompanyPeriod, PlanPricing, User } from '../types';
 import { Link } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -12,7 +12,7 @@ const DeveloperPayments: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<'history' | 'plans'>('plans');
+  const [activeTab, setActiveTab] = useState<'history' | 'plans' | 'pricing'>('plans');
   const [search, setSearch] = useState('');
   const [selectedCompanyId, setSelectedCompanyId] = useState('all');
   const [paymentToDelete, setPaymentToDelete] = useState<CompanyPayment | null>(null);
@@ -29,10 +29,14 @@ const DeveloperPayments: React.FC = () => {
   });
 
   const [planFormData, setPlanFormData] = useState({
-    plan: CompanyPlan.MENSAL,
+    plan: CompanyPlan.OURO,
+    period: CompanyPeriod.MENSAL,
     monthlyFee: 0,
     expiresAt: ''
   });
+
+  const [planPricingData, setPlanPricingData] = useState<PlanPricing[]>([]);
+  const [savingPricing, setSavingPricing] = useState(false);
 
   const loadData = async () => {
     try {
@@ -40,9 +44,10 @@ const DeveloperPayments: React.FC = () => {
       if (!user) return;
       setCurrentUser(user);
 
-      const [comps, pays] = await Promise.all([
+      const [comps, pays, pricing] = await Promise.all([
         dbService.getCompanies(),
-        dbService.getAllPayments()
+        dbService.getAllPayments(),
+        dbService.getPlanPricing()
       ]);
 
       setCompaniesState(comps);
@@ -50,6 +55,7 @@ const DeveloperPayments: React.FC = () => {
         ...p,
         company: comps.find(c => c.id === p.companyId)
       })));
+      setPlanPricingData(pricing);
     } catch (error) {
       console.error("Erro ao carregar dados de pagamentos:", error);
     } finally {
@@ -98,7 +104,13 @@ const DeveloperPayments: React.FC = () => {
 
   const stats = useMemo(() => {
     const total = payments.reduce((acc, p) => acc + p.amount, 0);
-    const overdue = companiesState.filter(c => c.id !== 'dev-corp' && c.plan !== CompanyPlan.LIVRE && c.expiresAt && new Date() > new Date(c.expiresAt)).length;
+    const overdue = companiesState.filter(c =>
+      c.id !== 'dev-corp' &&
+      c.plan !== CompanyPlan.LIVRE &&
+      c.plan !== CompanyPlan.TESTE &&
+      c.expiresAt &&
+      new Date() > new Date(c.expiresAt)
+    ).length;
     return { total, count: payments.length, overdue };
   }, [payments, companiesState]);
 
@@ -112,18 +124,16 @@ const DeveloperPayments: React.FC = () => {
     setIsPayModalOpen(true);
   };
 
+  // Period -> months mapping
+  const periodMonths: Record<string, number> = {
+    MENSAL: 1, TRIMESTRAL: 3, SEMESTRAL: 6, ANUAL: 12
+  };
+
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCompany) return;
 
-    let monthsToAdd = 0;
-    switch (selectedCompany.plan) {
-      case CompanyPlan.MENSAL: monthsToAdd = 1; break;
-      case CompanyPlan.TRIMESTRAL: monthsToAdd = 3; break;
-      case CompanyPlan.ANUAL: monthsToAdd = 12; break;
-      case CompanyPlan.TESTE: monthsToAdd = 1; break;
-      case CompanyPlan.LIVRE: monthsToAdd = 0; break;
-    }
+    const monthsToAdd = periodMonths[selectedCompany.period || 'MENSAL'] || 1;
 
     let currentExpiry = selectedCompany.expiresAt ? new Date(selectedCompany.expiresAt) : new Date();
     if (currentExpiry < new Date()) currentExpiry = new Date();
@@ -161,6 +171,7 @@ const DeveloperPayments: React.FC = () => {
     setSelectedCompany(company);
     setPlanFormData({
       plan: company.plan,
+      period: company.period || CompanyPeriod.MENSAL,
       monthlyFee: company.monthlyFee,
       expiresAt: company.expiresAt ? company.expiresAt.slice(0, 10) : ''
     });
@@ -168,20 +179,32 @@ const DeveloperPayments: React.FC = () => {
   };
 
   const handlePlanChange = (newPlan: CompanyPlan) => {
-    if (newPlan === CompanyPlan.LIVRE) {
-      setPlanFormData({ ...planFormData, plan: newPlan, expiresAt: '' });
+    if (newPlan === CompanyPlan.LIVRE || newPlan === CompanyPlan.TESTE) {
+      const months = newPlan === CompanyPlan.TESTE ? 1 : 0;
+      if (months === 0) {
+        setPlanFormData({ ...planFormData, plan: newPlan, expiresAt: '' });
+      } else {
+        const futureDate = new Date();
+        futureDate.setMonth(futureDate.getMonth() + months);
+        setPlanFormData({ ...planFormData, plan: newPlan, expiresAt: futureDate.toISOString().slice(0, 10) });
+      }
       return;
     }
-    const now = new Date();
-    let monthsToAdd = 1;
-    switch (newPlan) {
-      case CompanyPlan.MENSAL: monthsToAdd = 1; break;
-      case CompanyPlan.TRIMESTRAL: monthsToAdd = 3; break;
-      case CompanyPlan.ANUAL: monthsToAdd = 12; break;
-      case CompanyPlan.TESTE: monthsToAdd = 1; break;
-    }
-    const futureDate = new Date(now.setMonth(now.getMonth() + monthsToAdd));
+    const months = periodMonths[planFormData.period] || 1;
+    const futureDate = new Date();
+    futureDate.setMonth(futureDate.getMonth() + months);
     setPlanFormData({ ...planFormData, plan: newPlan, expiresAt: futureDate.toISOString().slice(0, 10) });
+  };
+
+  const handlePeriodChange = (newPeriod: CompanyPeriod) => {
+    if (planFormData.plan === CompanyPlan.LIVRE) {
+      setPlanFormData({ ...planFormData, period: newPeriod });
+      return;
+    }
+    const months = periodMonths[newPeriod] || 1;
+    const futureDate = new Date();
+    futureDate.setMonth(futureDate.getMonth() + months);
+    setPlanFormData({ ...planFormData, period: newPeriod, expiresAt: futureDate.toISOString().slice(0, 10) });
   };
 
   const handleSavePlan = async (e: React.FormEvent) => {
@@ -191,6 +214,7 @@ const DeveloperPayments: React.FC = () => {
     try {
       const updates = {
         plan: planFormData.plan,
+        period: planFormData.period,
         monthlyFee: planFormData.monthlyFee,
         expiresAt: planFormData.expiresAt ? new Date(planFormData.expiresAt + 'T12:00:00').toISOString() : undefined
       };
@@ -509,19 +533,34 @@ const DeveloperPayments: React.FC = () => {
             <form onSubmit={handleSavePlan} className="p-8 space-y-6">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Plano Vigente</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Tipo de Plano</label>
                   <select
                     className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-black uppercase text-[10px]"
                     value={planFormData.plan}
                     onChange={e => handlePlanChange(e.target.value as CompanyPlan)}
                   >
-                    <option value={CompanyPlan.MENSAL}>MENSAL</option>
-                    <option value={CompanyPlan.TRIMESTRAL}>TRIMESTRAL</option>
-                    <option value={CompanyPlan.ANUAL}>ANUAL</option>
-                    <option value={CompanyPlan.TESTE}>TESTE</option>
-                    <option value={CompanyPlan.LIVRE}>LIVRE</option>
+                    <option value={CompanyPlan.OURO}>Ouro</option>
+                    <option value={CompanyPlan.DIAMANTE}>Diamante</option>
+                    <option value={CompanyPlan.CUSTOM}>Custom</option>
+                    <option value={CompanyPlan.TESTE}>Teste (Trial)</option>
+                    <option value={CompanyPlan.LIVRE}>Livre (Sem Cobrança)</option>
                   </select>
                 </div>
+                {planFormData.plan !== CompanyPlan.LIVRE && planFormData.plan !== CompanyPlan.TESTE && (
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Período de Cobrança</label>
+                    <select
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-black uppercase text-[10px]"
+                      value={planFormData.period}
+                      onChange={e => handlePeriodChange(e.target.value as CompanyPeriod)}
+                    >
+                      <option value={CompanyPeriod.MENSAL}>Mensal (1 mês)</option>
+                      <option value={CompanyPeriod.TRIMESTRAL}>Trimestral (3 meses)</option>
+                      <option value={CompanyPeriod.SEMESTRAL}>Semestral (6 meses)</option>
+                      <option value={CompanyPeriod.ANUAL}>Anual (12 meses)</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Valor Mensal (R$)</label>
                   <input

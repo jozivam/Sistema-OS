@@ -12,6 +12,7 @@ const Users: React.FC = () => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState('');
+  const [forceLogoutToast, setForceLogoutToast] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -138,6 +139,19 @@ const Users: React.FC = () => {
     }
   };
 
+  const handleForceLogout = async (userId: string, userName: string) => {
+    if (!window.confirm(`Encerrar a sessão ativa de "${userName}"? O usuário será desconectado assim que tentar acessar o sistema.`)) return;
+    try {
+      await authService.forceLogoutUser(userId);
+      setForceLogoutToast(`Sessão de ${userName} encerrada.`);
+      setTimeout(() => setForceLogoutToast(null), 3000);
+    } catch (error) {
+      console.error('Erro ao encerrar sessão:', error);
+      alert('Erro ao encerrar sessão do usuário.');
+    }
+  };
+
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-24">
@@ -152,6 +166,11 @@ const Users: React.FC = () => {
 
   return (
     <div>
+      {forceLogoutToast && (
+        <div className="fixed top-6 right-6 z-[100] bg-slate-900 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl animate-in slide-in-from-top-4 flex items-center gap-2">
+          <i className="fa-solid fa-circle-check text-orange-400"></i> {forceLogoutToast}
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Usuários</h1>
@@ -221,6 +240,16 @@ const Users: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
+                      {/* Botão Encerrar Sessão — apenas para Desenvolvedor */}
+                      {currentUser?.role === UserRole.DEVELOPER && user.id !== currentUser.id && (
+                        <button
+                          onClick={() => handleForceLogout(user.id, user.name)}
+                          className="text-orange-500 hover:bg-orange-50 p-2 rounded-lg transition-colors"
+                          title="Encerrar Sessão Ativa"
+                        >
+                          <i className="fa-solid fa-power-off"></i>
+                        </button>
+                      )}
                       <button
                         onClick={() => toggleBlock(user.id)}
                         className={`p-2 rounded-lg transition-colors ${user.isBlocked ? 'text-green-500 hover:bg-green-50' : 'text-orange-500 hover:bg-orange-50'}`}

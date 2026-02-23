@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
+import { isTrialUser, getTrialOrders, getTrialCustomers } from '../services/trialService';
 import { OrderStatus, UserRole, ServiceOrder, Customer, User } from '../types';
 import { Link } from 'react-router-dom';
 
@@ -18,7 +19,11 @@ const Dashboard: React.FC = () => {
         const user = await authService.getCurrentUser();
         setCurrentUser(user);
 
-        if (user?.companyId) {
+        if (isTrialUser(user)) {
+          // Modo trial: dados do sessionStorage
+          setOrders(getTrialOrders());
+          setCustomers(getTrialCustomers());
+        } else if (user?.companyId) {
           console.log('Carregando dados para Empresa ID:', user.companyId);
           console.log('Usuário Logado:', user.name, '(ID:', user.id, '- Role:', user.role, ')');
 
@@ -53,7 +58,7 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  const isAdmin = currentUser?.role === UserRole.ADMIN;
+  const isAdmin = currentUser?.role === UserRole.ADMIN || isTrialUser(currentUser);
 
   const filteredOrders = isAdmin
     ? orders

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
-import { Company, CompanyPlan, User, UserRole, ChatMessage } from '../types';
+import { Company, CompanyPlan, CompanyPeriod, User, UserRole, ChatMessage } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
 
 // Novos componentes refatorados
@@ -22,13 +22,15 @@ const DeveloperPanel: React.FC = () => {
   const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
   const [isInsertModalOpen, setInsertModalOpen] = useState(false);
   const [showAllCompanies, setShowAllCompanies] = useState(false);
-  const [activeTab, setActiveTab] = useState<'companies' | 'support' | 'backup'>('companies');
+  const [activeTab, setActiveTab] = useState<'companies' | 'support' | 'backup' | 'sessions'>('companies');
   const [supportChannels, setSupportChannels] = useState<{ companyId: string, companyName: string, lastMessage: string, timestamp: string }[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [channelMessages, setChannelMessages] = useState<ChatMessage[]>([]);
   const [replyText, setReplyText] = useState('');
   const [supportSearchTerm, setSupportSearchTerm] = useState('');
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [activeSessionUsers, setActiveSessionUsers] = useState<User[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -43,7 +45,8 @@ const DeveloperPanel: React.FC = () => {
     phone: '',
     address: '',
     city: '',
-    plan: CompanyPlan.MENSAL,
+    plan: CompanyPlan.OURO,
+    period: CompanyPeriod.MENSAL,
     monthlyFee: 0,
     status: 'ACTIVE' as 'ACTIVE' | 'BLOCKED',
     createdAt: new Date().toISOString().split('T')[0],
@@ -77,12 +80,12 @@ const DeveloperPanel: React.FC = () => {
   };
 
   useEffect(() => {
-    if (currentTab === 'support' || currentTab === 'backup' || currentTab === 'companies') {
+    if (currentTab === 'support' || currentTab === 'backup' || currentTab === 'companies' || currentTab === 'sessions') {
       setActiveTab(currentTab as any);
     }
   }, [currentTab]);
 
-  const handleTabChange = (tab: 'companies' | 'support' | 'backup') => {
+  const handleTabChange = (tab: 'companies' | 'support' | 'backup' | 'sessions') => {
     setActiveTab(tab);
     if (tab === 'companies') {
       searchParams.delete('tab');
@@ -90,6 +93,28 @@ const DeveloperPanel: React.FC = () => {
       searchParams.set('tab', tab);
     }
     setSearchParams(searchParams);
+    if (tab === 'sessions') {
+      loadActiveSessions();
+    }
+  };
+
+  const loadActiveSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      const users = await dbService.getActiveSessionUsers();
+      setActiveSessionUsers(users);
+    } catch { }
+    finally { setLoadingSessions(false); }
+  };
+
+  const handleForceLogout = async (userId: string, userName: string) => {
+    try {
+      await dbService.forceLogoutUser(userId);
+      setActiveSessionUsers(prev => prev.filter(u => u.id !== userId));
+      setToast({ message: `Sessão de ${userName} encerrada com sucesso!`, type: 'success' });
+    } catch {
+      setToast({ message: 'Erro ao encerrar sessão.', type: 'error' });
+    }
   };
 
   useEffect(() => {
@@ -193,16 +218,8 @@ const DeveloperPanel: React.FC = () => {
     if (plan === CompanyPlan.LIVRE) return undefined;
 
     const date = new Date(baseDateStr + 'T12:00:00');
-    let monthsToAdd = 1;
-
-    switch (plan) {
-      case CompanyPlan.MENSAL: monthsToAdd = 1; break;
-      case CompanyPlan.TRIMESTRAL: monthsToAdd = 3; break;
-      case CompanyPlan.ANUAL: monthsToAdd = 12; break;
-      case CompanyPlan.TESTE: monthsToAdd = 1; break;
-    }
-
-    date.setMonth(date.getMonth() + monthsToAdd);
+    // Default: 1 month for all regular plans
+    date.setMonth(date.getMonth() + 1);
     return date.toISOString();
   };
 
@@ -235,6 +252,7 @@ const DeveloperPanel: React.FC = () => {
         address: newCompanyData.address,
         city: newCompanyData.city,
         plan: newCompanyData.plan,
+        period: newCompanyData.period,
         monthlyFee: newCompanyData.monthlyFee,
         status: newCompanyData.status,
         expiresAt: expiresAt ? new Date(expiresAt + 'T12:00:00').toISOString() : undefined,
@@ -386,6 +404,69 @@ const DeveloperPanel: React.FC = () => {
           setSearchTerm={setSupportSearchTerm}
           chatEndRef={chatEndRef}
         />
+      ) : activeTab === 'sessions' ? (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <i className="fa-solid fa-users-gear"></i> Sessões Ativas
+            </h3>
+            <button
+              onClick={loadActiveSessions}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2"
+            >
+              <i className="fa-solid fa-rotate-right"></i> Atualizar
+            </button>
+          </div>
+          {loadingSessions ? (
+            <div className="flex items-center justify-center p-16">
+              <i className="fa-solid fa-spinner fa-spin text-2xl text-blue-500"></i>
+            </div>
+          ) : activeSessionUsers.length === 0 ? (
+            <div className="text-center py-16">
+              <i className="fa-solid fa-circle-check text-4xl text-green-500 mb-3 block"></i>
+              <p className="text-slate-500 font-bold text-sm">Nenhuma sessão ativa no momento.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Usuário</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">E-mail</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Perfil</th>
+                    <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeSessionUsers.map(u => (
+                    <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">
+                            {u.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="font-bold text-sm text-slate-800">{u.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-500">{u.email}</td>
+                      <td className="px-6 py-4">
+                        <span className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-black uppercase">{u.role}</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => handleForceLogout(u.id, u.name)}
+                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ml-auto"
+                        >
+                          <i className="fa-solid fa-plug-circle-xmark"></i> Forçar Logout
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       ) : (
         <BackupTab
           toastHandler={(msg, type) => setToast({ message: msg, type })}

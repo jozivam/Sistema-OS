@@ -61,6 +61,21 @@ O sistema é ideal para:
 
 ---
 
+## ⚙️ Configuração de Ambiente
+
+Para rodar o projeto localmente ou fazer o deploy, você precisará configurar as variáveis de ambiente.
+
+1.  Crie um arquivo `.env.local` na raiz do projeto (ele já está ignorado no Git para sua segurança).
+2.  Copie o conteúdo de [`.env.example`](file:///c:/Users/jps/Documents/Sistema-OS/.env.example) para o seu `.env.local`.
+3.  Preencha com suas chaves do Supabase e Gemini.
+
+### 🚀 Deploy (Vercel/Netlify/etc)
+
+**Nunca envie o arquivo `.env.local` para o repositório.** No seu painel de deploy (como a Vercel), procure pela seção **Environment Variables** e adicione cada uma das chaves definidas no `.env.example` com seus respectivos valores.
+
+---
+
+
 ## 📦 Estrutura do Projeto
 
 ```bash

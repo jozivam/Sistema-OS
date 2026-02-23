@@ -768,6 +768,79 @@
     border-color: rgba(255, 255, 255, 0.25);
 }
 
+
+/* ============================
+   PRICING PERIOD TOGGLE
+   ============================ */
+.pricing-period-toggle {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 3rem;
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 6px;
+    max-width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.period-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.6rem 1.4rem;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.period-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.period-btn.active {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 4px 14px var(--primary-glow);
+}
+
+.period-discount {
+    font-size: 0.7rem;
+    font-weight: 800;
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    padding: 1px 5px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+.period-btn.active .period-discount {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.pricing-plan-icon {
+    font-size: 1.6rem;
+    margin-bottom: 0.8rem;
+}
+
+.price-total-note {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 1.2rem;
+    font-style: italic;
+}
+
 /* ============================
    TESTIMONIALS
    ============================ */

@@ -2,7 +2,8 @@
 export enum UserRole {
   DEVELOPER = 'Desenvolvedor',
   ADMIN = 'Administrador',
-  TECH = 'Técnico'
+  TECH = 'Técnico',
+  TRIAL = 'Trial'
 }
 
 export enum OrderStatus {
@@ -13,12 +14,39 @@ export enum OrderStatus {
   CANCELLED = 'Cancelada'
 }
 
+// Tipo de plano contratado (tier)
 export enum CompanyPlan {
-  MENSAL = 'MENSAL',
-  TRIMESTRAL = 'TRIMESTRAL',
-  ANUAL = 'ANUAL',
+  OURO = 'OURO',
+  DIAMANTE = 'DIAMANTE',
+  CUSTOM = 'CUSTOM',
   TESTE = 'TESTE',
   LIVRE = 'LIVRE'
+}
+
+// Período de cobrança do plano
+export enum CompanyPeriod {
+  MENSAL = 'MENSAL',
+  TRIMESTRAL = 'TRIMESTRAL',
+  SEMESTRAL = 'SEMESTRAL',
+  ANUAL = 'ANUAL'
+}
+
+// Limites de admins por plano
+export const ADMIN_LIMITS: Record<string, number | null> = {
+  [CompanyPlan.OURO]: 2,
+  [CompanyPlan.DIAMANTE]: 5,
+  [CompanyPlan.CUSTOM]: null, // ilimitado
+  [CompanyPlan.TESTE]: 1,
+  [CompanyPlan.LIVRE]: null,
+};
+
+export interface PlanPricing {
+  id: string;
+  planType: string;
+  period: CompanyPeriod;
+  basePrice: number;
+  discountPct: number;
+  updatedAt: string;
 }
 
 export interface CompanyPayment {
@@ -26,8 +54,8 @@ export interface CompanyPayment {
   companyId: string;
   amount: number;
   paymentDate: string;
-  planReference: CompanyPlan;
-  expiresAtAfter: string; // Data de vencimento após este pagamento
+  planReference: string;
+  expiresAtAfter: string;
 }
 
 export interface SystemSettings {
@@ -40,25 +68,26 @@ export interface SystemSettings {
 
 export interface Company {
   id: string;
-  name: string; // Mantido para compatibilidade, será o Nome Fantasia
-  corporateName: string; // Razão Social
-  tradeName: string; // Nome Fantasia
-  document: string; // CNPJ
+  name: string;
+  corporateName: string;
+  tradeName: string;
+  document: string;
   email: string;
   phone: string;
   address: string;
   city: string;
   plan: CompanyPlan;
+  period: CompanyPeriod;
   monthlyFee: number;
   status: 'ACTIVE' | 'BLOCKED';
   createdAt: string;
-  expiresAt?: string; // Data de expiração (ISO string), null para plano LIVRE
+  expiresAt?: string;
   settings: SystemSettings;
 }
 
 export interface User {
   id: string;
-  companyId?: string; // Null para DEVELOPER
+  companyId?: string;
   name: string;
   email: string;
   phone?: string;
@@ -153,7 +182,7 @@ export interface AppState {
   customers: Customer[];
   orders: ServiceOrder[];
   currentUser: User | null;
-  settings: SystemSettings; // Defaults globais
+  settings: SystemSettings;
   messages: ChatMessage[];
   companyPayments: CompanyPayment[];
   notifications: AppNotification[];

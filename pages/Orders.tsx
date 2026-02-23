@@ -2,6 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
+import {
+  isTrialUser, getTrialOrders, getTrialCustomers, saveTrialOrders,
+  TRIAL_COMPANY_ID, TRIAL_ADMIN_ID, TRIAL_TECH_ID
+} from '../services/trialService';
 import { OrderStatus, ServiceOrder, UserRole, OrderAttachment, User, Customer, Company } from '../types';
 import { Link, useSearchParams } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
@@ -48,26 +52,53 @@ const Orders: React.FC = () => {
       if (!user) return;
       setCurrentUser(user);
 
-      const [fetchedOrders, fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
-        dbService.getOrders(user.companyId),
-        dbService.getCustomers(user.companyId),
-        dbService.getUsers(user.companyId),
-        dbService.getCompany(user.companyId)
-      ]);
+      if (isTrialUser(user)) {
+        // Modo trial: dados do sessionStorage
+        const trialOrders = getTrialOrders();
+        const trialCustomers = getTrialCustomers();
+        // Cria lista de "usuários" para o select de técnico no modal
+        const trialUsers: User[] = [
+          { id: TRIAL_ADMIN_ID, name: user.name + ' (Admin)', email: 'admin@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID },
+          { id: TRIAL_TECH_ID, name: user.name + ' (Técnico)', email: 'tecnico@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID },
+        ];
+        const trialCompany: Company = {
+          id: TRIAL_COMPANY_ID, name: 'Demo', corporateName: 'Demo', tradeName: 'Demo',
+          document: '', email: '', phone: '', address: '', city: '',
+          plan: 'DIAMANTE' as any, period: 'MENSAL' as any, monthlyFee: 0,
+          status: 'ACTIVE', createdAt: new Date().toISOString(),
+          settings: { enableAI: true, enableAttachments: true, enableChat: true, enableHistory: true, orderTypes: ['Instalação', 'Manutenção', 'Reparo', 'Configuração', 'Visita Técnica'] }
+        };
+        setOrders(trialOrders);
+        setCustomers(trialCustomers);
+        setUsers(trialUsers);
+        setCompany(trialCompany);
+        setNewOrder(prev => ({
+          ...prev,
+          techId: TRIAL_TECH_ID,
+          type: trialCompany.settings.orderTypes[0],
+          createdAt: getCurrentDateTime()
+        }));
+      } else {
+        const [fetchedOrders, fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
+          dbService.getOrders(user.companyId),
+          dbService.getCustomers(user.companyId),
+          dbService.getUsers(user.companyId),
+          dbService.getCompany(user.companyId)
+        ]);
 
-      setOrders(fetchedOrders);
-      setCustomers(fetchedCustomers);
-      setUsers(fetchedUsers);
-      setCompany(fetchedCompany);
+        setOrders(fetchedOrders);
+        setCustomers(fetchedCustomers);
+        setUsers(fetchedUsers);
+        setCompany(fetchedCompany);
 
-      const defaultType = fetchedCompany?.settings.orderTypes[0] || 'Suporte';
-      setNewOrder(prev => ({
-        ...prev,
-        techId: user.role === UserRole.TECH ? user.id : '',
-        type: defaultType,
-        createdAt: getCurrentDateTime()
-      }));
-
+        const defaultType = fetchedCompany?.settings.orderTypes[0] || 'Suporte';
+        setNewOrder(prev => ({
+          ...prev,
+          techId: user.role === UserRole.TECH ? user.id : '',
+          type: defaultType,
+          createdAt: getCurrentDateTime()
+        }));
+      }
     } catch (error) {
       console.error("Erro ao carregar dados de ordens:", error);
     } finally {
@@ -83,7 +114,7 @@ const Orders: React.FC = () => {
     if (searchParams.get('clientId')) setModalOpen(true);
   }, [searchParams]);
 
-  const isAdmin = currentUser?.role === UserRole.ADMIN;
+  const isAdmin = currentUser?.role === UserRole.ADMIN || isTrialUser(currentUser);
   const settings = company?.settings || (window as any).initialData?.settings;
 
   const filteredOrders = orders.filter(order => {
@@ -142,29 +173,51 @@ const Orders: React.FC = () => {
         return;
       }
 
-      const orderData: Omit<ServiceOrder, 'id' | 'createdAt'> = {
-        companyId: currentUser?.companyId || '',
-        customerId: customer.id,
-        customerName: customer.name,
-        techId: tech.id,
-        techName: tech.name,
-        type: newOrder.type,
-        description: newOrder.description,
-        scheduledDate: newOrder.scheduledDate,
-        aiReport: '',
-        status: OrderStatus.OPEN,
-        posts: [],
-        attachments: newOrder.attachments
-      };
+      if (isTrialUser(currentUser)) {
+        // Modo trial: criar ordem no sessionStorage
+        const newTrialOrder: ServiceOrder = {
+          id: 'trial-order-' + Date.now(),
+          companyId: TRIAL_COMPANY_ID,
+          customerId: customer.id,
+          customerName: customer.name,
+          techId: tech.id,
+          techName: tech.name,
+          type: newOrder.type,
+          description: newOrder.description,
+          scheduledDate: newOrder.scheduledDate,
+          aiReport: '',
+          status: OrderStatus.OPEN,
+          createdAt: new Date().toISOString(),
+          posts: [],
+          attachments: newOrder.attachments
+        };
+        const updated = [newTrialOrder, ...orders];
+        saveTrialOrders(updated);
+        setOrders(updated);
+      } else {
+        const orderData: Omit<ServiceOrder, 'id' | 'createdAt'> = {
+          companyId: currentUser?.companyId || '',
+          customerId: customer.id,
+          customerName: customer.name,
+          techId: tech.id,
+          techName: tech.name,
+          type: newOrder.type,
+          description: newOrder.description,
+          scheduledDate: newOrder.scheduledDate,
+          aiReport: '',
+          status: OrderStatus.OPEN,
+          posts: [],
+          attachments: newOrder.attachments
+        };
+        const createdOrder = await dbService.createOrder(orderData);
+        setOrders(prev => [createdOrder, ...prev]);
+      }
 
-      const createdOrder = await dbService.createOrder(orderData);
-      setOrders(prev => [createdOrder, ...prev]);
       setModalOpen(false);
-
       setNewOrder({
         customerId: '',
-        techId: currentUser?.role === UserRole.TECH ? currentUser.id : '',
-        type: settings?.orderTypes[0] || 'Suporte',
+        techId: isTrialUser(currentUser) ? TRIAL_TECH_ID : (currentUser?.role === UserRole.TECH ? currentUser.id : ''),
+        type: company?.settings.orderTypes[0] || 'Suporte',
         description: '',
         createdAt: getCurrentDateTime(),
         scheduledDate: '',
@@ -179,8 +232,14 @@ const Orders: React.FC = () => {
   const confirmDelete = async () => {
     if (!orderToDelete) return;
     try {
-      await dbService.deleteOrder(orderToDelete);
-      setOrders(prev => prev.filter(o => o.id !== orderToDelete));
+      if (isTrialUser(currentUser)) {
+        const updated = orders.filter(o => o.id !== orderToDelete);
+        saveTrialOrders(updated);
+        setOrders(updated);
+      } else {
+        await dbService.deleteOrder(orderToDelete);
+        setOrders(prev => prev.filter(o => o.id !== orderToDelete));
+      }
       setOrderToDelete(null);
     } catch (error) {
       console.error("Erro ao excluir OS:", error);

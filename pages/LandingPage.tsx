@@ -1,9 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import './LandingPage.css';
 
+// Preços padrão (fallback se banco não disponível)
+const DEFAULT_PRICING: Record<string, Record<string, { base: number; discount: number }>> = {
+    OURO: {
+        MENSAL: { base: 97, discount: 0 },
+        TRIMESTRAL: { base: 97, discount: 5 },
+        SEMESTRAL: { base: 97, discount: 10 },
+        ANUAL: { base: 97, discount: 15 },
+    },
+    DIAMANTE: {
+        MENSAL: { base: 197, discount: 0 },
+        TRIMESTRAL: { base: 197, discount: 5 },
+        SEMESTRAL: { base: 197, discount: 10 },
+        ANUAL: { base: 197, discount: 15 },
+    },
+};
+
+const PERIOD_LABELS: Record<string, { label: string; months: number }> = {
+    MENSAL: { label: 'Mensal', months: 1 },
+    TRIMESTRAL: { label: 'Trimestral', months: 3 },
+    SEMESTRAL: { label: 'Semestral', months: 6 },
+    ANUAL: { label: 'Anual', months: 12 },
+};
+
+function calcPrice(base: number, discount: number, months: number) {
+    const monthly = base * (1 - discount / 100);
+    return { monthly: monthly.toFixed(2), total: (monthly * months).toFixed(2) };
+}
+
 const LandingPage: React.FC = () => {
     const [scrolled, setScrolled] = useState(false);
     const [openFaq, setOpenFaq] = useState<number | null>(null);
+    const [selectedPeriod, setSelectedPeriod] = useState<string>('MENSAL');
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 60);
@@ -59,8 +88,8 @@ const LandingPage: React.FC = () => {
                             Automatize processos, reduza erros e aumente sua produtividade no dia a dia.
                         </p>
                         <div className="hero-btns">
-                            <a href="#/login" className="btn-primary btn-large">
-                                <i className="fa-solid fa-rocket"></i> Testar Gratuitamente
+                            <a href="#/trial" className="btn-primary btn-large">
+                                <i className="fa-solid fa-flask"></i> Testar Gratuitamente
                             </a>
                             <a href="#how-it-works" className="btn-outline btn-large">
                                 <i className="fa-solid fa-play"></i> Ver Como Funciona
@@ -209,61 +238,102 @@ const LandingPage: React.FC = () => {
                 <div className="section-header center">
                     <span className="section-badge">Planos e Preços</span>
                     <h2>Escolha o plano ideal para sua empresa</h2>
-                    <p>Comece gratuitamente e escale conforme crescer. Cancele quando quiser.</p>
+                    <p>Pague pelo período que preferir e economize até 15% nos planos anuais.</p>
                 </div>
+
+                {/* Period Toggle */}
+                <div className="pricing-period-toggle">
+                    {Object.entries(PERIOD_LABELS).map(([key, { label }]) => (
+                        <button
+                            key={key}
+                            className={`period-btn ${selectedPeriod === key ? 'active' : ''}`}
+                            onClick={() => setSelectedPeriod(key)}
+                        >
+                            {label}
+                            {key !== 'MENSAL' && (
+                                <span className="period-discount">-{DEFAULT_PRICING.OURO[key].discount}%</span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="pricing-grid">
-                    <div className="pricing-card">
-                        <div className="pricing-plan-name">Básico</div>
-                        <div className="pricing-price">
-                            <span className="price-currency">R$</span>
-                            <span className="price-value">97</span>
-                            <span className="price-period">/mês</span>
-                        </div>
-                        <p className="pricing-desc">Ideal para autônomos e pequenas equipes.</p>
-                        <ul className="pricing-features">
-                            <li><i className="fa-solid fa-check"></i> Até 3 usuários</li>
-                            <li><i className="fa-solid fa-check"></i> 200 O.S./mês</li>
-                            <li><i className="fa-solid fa-check"></i> Gestão de clientes</li>
-                            <li><i className="fa-solid fa-check"></i> Suporte por e-mail</li>
-                            <li className="disabled"><i className="fa-solid fa-xmark"></i> Relatórios avançados</li>
-                            <li className="disabled"><i className="fa-solid fa-xmark"></i> API de integração</li>
-                        </ul>
-                        <a href="#/login" className="btn-pricing-outline">Começar Agora</a>
-                    </div>
+                    {/* Plano Ouro */}
+                    {(() => {
+                        const p = DEFAULT_PRICING.OURO[selectedPeriod];
+                        const { monthly, total } = calcPrice(p.base, p.discount, PERIOD_LABELS[selectedPeriod].months);
+                        return (
+                            <div className="pricing-card">
+                                <div className="pricing-plan-icon"><i className="fa-solid fa-circle-dot" style={{ color: '#F5A623' }}></i></div>
+                                <div className="pricing-plan-name">Ouro</div>
+                                <p className="pricing-desc">Ideal para pequenas empresas e profissionais autônomos.</p>
+                                <div className="pricing-price">
+                                    <span className="price-currency">R$</span>
+                                    <span className="price-value">{monthly.replace('.', ',')}</span>
+                                    <span className="price-period">/mês</span>
+                                </div>
+                                {selectedPeriod !== 'MENSAL' && (
+                                    <p className="price-total-note">Total de R$ {total.replace('.', ',')} por {PERIOD_LABELS[selectedPeriod].months} meses</p>
+                                )}
+                                <ul className="pricing-features">
+                                    <li><i className="fa-solid fa-check"></i> Até 2 administradores</li>
+                                    <li><i className="fa-solid fa-check"></i> Usuários técnicos ilimitados</li>
+                                    <li><i className="fa-solid fa-check"></i> Gestão completa de O.S.</li>
+                                    <li><i className="fa-solid fa-check"></i> Histórico de clientes</li>
+                                    <li><i className="fa-solid fa-check"></i> Suporte via chat</li>
+                                    <li className="disabled"><i className="fa-solid fa-xmark"></i> Relatórios com IA</li>
+                                </ul>
+                                <a href="#/trial" className="btn-pricing-outline">Começar Agora</a>
+                            </div>
+                        );
+                    })()}
 
-                    <div className="pricing-card featured">
-                        <div className="pricing-badge-popular">⭐ Mais Popular</div>
-                        <div className="pricing-plan-name">Profissional</div>
-                        <div className="pricing-price">
-                            <span className="price-currency">R$</span>
-                            <span className="price-value">197</span>
-                            <span className="price-period">/mês</span>
-                        </div>
-                        <p className="pricing-desc">Para empresas em crescimento que precisam do máximo.</p>
-                        <ul className="pricing-features">
-                            <li><i className="fa-solid fa-check"></i> Usuários ilimitados</li>
-                            <li><i className="fa-solid fa-check"></i> O.S. ilimitadas</li>
-                            <li><i className="fa-solid fa-check"></i> Relatórios avançados</li>
-                            <li><i className="fa-solid fa-check"></i> Chat IA integrado</li>
-                            <li><i className="fa-solid fa-check"></i> Suporte prioritário</li>
-                            <li className="disabled"><i className="fa-solid fa-xmark"></i> API de integração</li>
-                        </ul>
-                        <a href="#/login" className="btn-pricing-primary">Testar 14 dias grátis</a>
-                    </div>
+                    {/* Plano Diamante */}
+                    {(() => {
+                        const p = DEFAULT_PRICING.DIAMANTE[selectedPeriod];
+                        const { monthly, total } = calcPrice(p.base, p.discount, PERIOD_LABELS[selectedPeriod].months);
+                        return (
+                            <div className="pricing-card featured">
+                                <div className="pricing-badge-popular">⭐ Mais Popular</div>
+                                <div className="pricing-plan-icon"><i className="fa-solid fa-gem" style={{ color: '#60C0E0' }}></i></div>
+                                <div className="pricing-plan-name">Diamante</div>
+                                <p className="pricing-desc">Para empresas em crescimento que precisam do máximo.</p>
+                                <div className="pricing-price">
+                                    <span className="price-currency">R$</span>
+                                    <span className="price-value">{monthly.replace('.', ',')}</span>
+                                    <span className="price-period">/mês</span>
+                                </div>
+                                {selectedPeriod !== 'MENSAL' && (
+                                    <p className="price-total-note">Total de R$ {total.replace('.', ',')} por {PERIOD_LABELS[selectedPeriod].months} meses</p>
+                                )}
+                                <ul className="pricing-features">
+                                    <li><i className="fa-solid fa-check"></i> Até 5 administradores</li>
+                                    <li><i className="fa-solid fa-check"></i> Usuários ilimitados</li>
+                                    <li><i className="fa-solid fa-check"></i> O.S. ilimitadas</li>
+                                    <li><i className="fa-solid fa-check"></i> Relatórios com IA</li>
+                                    <li><i className="fa-solid fa-check"></i> Anexos em O.S.</li>
+                                    <li><i className="fa-solid fa-check"></i> Suporte prioritário</li>
+                                </ul>
+                                <a href="#/trial" className="btn-pricing-primary">Testar Agora</a>
+                            </div>
+                        );
+                    })()}
 
+                    {/* Plano Custom */}
                     <div className="pricing-card">
-                        <div className="pricing-plan-name">Enterprise</div>
-                        <div className="pricing-price enterprise-price">
-                            <span className="price-value">Sob consulta</span>
-                        </div>
+                        <div className="pricing-plan-icon"><i className="fa-solid fa-star" style={{ color: '#9B59B6' }}></i></div>
+                        <div className="pricing-plan-name">Custom</div>
                         <p className="pricing-desc">Para grandes operações com necessidades customizadas.</p>
+                        <div className="pricing-price enterprise-price">
+                            <span className="price-value">Sob Consulta</span>
+                        </div>
                         <ul className="pricing-features">
-                            <li><i className="fa-solid fa-check"></i> Tudo do Profissional</li>
-                            <li><i className="fa-solid fa-check"></i> API de integração</li>
-                            <li><i className="fa-solid fa-check"></i> White-label disponível</li>
+                            <li><i className="fa-solid fa-check"></i> Administradores ilimitados</li>
+                            <li><i className="fa-solid fa-check"></i> Criação de admins pelo próprio admin</li>
+                            <li><i className="fa-solid fa-check"></i> Tudo do plano Diamante</li>
                             <li><i className="fa-solid fa-check"></i> SLA garantido</li>
-                            <li><i className="fa-solid fa-check"></i> Gerente dedicado</li>
                             <li><i className="fa-solid fa-check"></i> Onboarding personalizado</li>
+                            <li><i className="fa-solid fa-check"></i> Gerente de conta dedicado</li>
                         </ul>
                         <a href="#/login" className="btn-pricing-outline">Falar com Especialista</a>
                     </div>
@@ -327,8 +397,8 @@ const LandingPage: React.FC = () => {
                     <h2>Dê o próximo passo para uma gestão mais profissional</h2>
                     <p>Pare de perder informações e atrasar atendimentos. Comece a usar o OsRepo hoje, gratuitamente.</p>
                     <div className="cta-options">
-                        <a href="#/login" className="btn-primary btn-large">
-                            <i className="fa-solid fa-rocket"></i> Testar Grátis por 14 dias
+                        <a href="#/trial" className="btn-primary btn-large">
+                            <i className="fa-solid fa-flask"></i> Testar Grátis por 14 dias
                         </a>
                         <a href="#/login" className="btn-outline btn-large">
                             <i className="fa-solid fa-comments"></i> Solicitar Demonstração

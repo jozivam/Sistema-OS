@@ -3,8 +3,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
+import {
+  isTrialUser, getTrialOrders, getTrialCustomers, saveTrialOrders,
+  TRIAL_COMPANY_ID, TRIAL_ADMIN_ID, TRIAL_TECH_ID
+} from '../services/trialService';
 import { OrderStatus, ServiceOrder, UserRole, OrderPost, OrderAttachment, User, Company } from '../types';
-
 import ConfirmModal from '../components/ConfirmModal';
 
 const OrderDetails: React.FC = () => {
@@ -43,33 +46,68 @@ const OrderDetails: React.FC = () => {
       const fetchedUser = await authService.getCurrentUser();
       setCurrentUser(fetchedUser);
 
-      const fetchedOrder = await dbService.getOrder(id);
-      if (fetchedOrder) {
-        setOrder(fetchedOrder);
-        setEditedDescription(fetchedOrder.description || '');
-        setEditedHistory(fetchedOrder.dailyHistory || '');
-        setEditedAIReport(fetchedOrder.aiReport || '');
-
-        if (fetchedOrder.scheduledDate) {
-          const date = new Date(fetchedOrder.scheduledDate);
-          date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-          setEditedScheduledDate(date.toISOString().slice(0, 16));
-        }
-        setEditedType(fetchedOrder.type);
-        setEditedTechId(fetchedOrder.techId || '');
-
-        if (fetchedUser?.companyId) {
-          const [fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
-            dbService.getCustomers(fetchedUser.companyId),
-            dbService.getUsers(fetchedUser.companyId),
-            dbService.getCompany(fetchedUser.companyId)
-          ]);
-
-          setUsers(fetchedUsers);
-          setCompany(fetchedCompany);
-
-          const foundCustomer = fetchedCustomers.find(c => c.id === fetchedOrder.customerId);
+      if (isTrialUser(fetchedUser)) {
+        // Modo trial: busca ordem do sessionStorage
+        const allOrders = getTrialOrders();
+        const foundOrder = allOrders.find(o => o.id === id) || null;
+        if (foundOrder) {
+          setOrder(foundOrder);
+          setEditedDescription(foundOrder.description || '');
+          setEditedHistory(foundOrder.dailyHistory || '');
+          setEditedAIReport(foundOrder.aiReport || '');
+          if (foundOrder.scheduledDate) {
+            const date = new Date(foundOrder.scheduledDate);
+            date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+            setEditedScheduledDate(date.toISOString().slice(0, 16));
+          }
+          setEditedType(foundOrder.type);
+          setEditedTechId(foundOrder.techId || '');
+          const trialCustomers = getTrialCustomers();
+          const foundCustomer = trialCustomers.find(c => c.id === foundOrder.customerId);
           setCustomer(foundCustomer);
+          // Usuários disponíveis para o select de técnico
+          setUsers([
+            { id: TRIAL_ADMIN_ID, name: fetchedUser!.name + ' (Admin)', email: 'admin@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID },
+            { id: TRIAL_TECH_ID, name: fetchedUser!.name + ' (Técnico)', email: 'tecnico@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID },
+          ]);
+          const trialCompany: Company = {
+            id: TRIAL_COMPANY_ID, name: 'Demo', corporateName: 'Demo', tradeName: 'Demo',
+            document: '', email: '', phone: '', address: '', city: '',
+            plan: 'DIAMANTE' as any, period: 'MENSAL' as any, monthlyFee: 0,
+            status: 'ACTIVE', createdAt: new Date().toISOString(),
+            settings: { enableAI: true, enableAttachments: true, enableChat: true, enableHistory: true, orderTypes: ['Instalação', 'Manutenção', 'Reparo', 'Configuração', 'Visita Técnica'] }
+          };
+          setCompany(trialCompany);
+        }
+      } else {
+        const fetchedOrder = await dbService.getOrder(id);
+        if (fetchedOrder) {
+          setOrder(fetchedOrder);
+          setEditedDescription(fetchedOrder.description || '');
+          setEditedHistory(fetchedOrder.dailyHistory || '');
+          setEditedAIReport(fetchedOrder.aiReport || '');
+
+          if (fetchedOrder.scheduledDate) {
+            const date = new Date(fetchedOrder.scheduledDate);
+            date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+            setEditedScheduledDate(date.toISOString().slice(0, 16));
+          }
+          setEditedType(fetchedOrder.type);
+          setEditedTechId(fetchedOrder.techId || '');
+
+          if (fetchedUser?.companyId) {
+            const [fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
+              dbService.getCustomers(fetchedUser.companyId),
+              dbService.getUsers(fetchedUser.companyId),
+              dbService.getCompany(fetchedUser.companyId)
+            ]);
+
+            setUsers(fetchedUsers);
+            setCompany(fetchedCompany);
+
+            const foundCustomer = fetchedCustomers.find(c => c.id === fetchedOrder.customerId);
+            setCustomer(foundCustomer);
+          }
         }
       }
     } catch (error) {
@@ -83,7 +121,7 @@ const OrderDetails: React.FC = () => {
     loadOrderData();
   }, [id]);
 
-  const isAdmin = currentUser?.role === UserRole.ADMIN;
+  const isAdmin = currentUser?.role === UserRole.ADMIN || isTrialUser(currentUser);
   const settings = company?.settings || (window as any).initialData?.settings; // Fallback se necessário
 
   if (loading) return (
@@ -98,8 +136,18 @@ const OrderDetails: React.FC = () => {
 
   const persistChanges = async (updatedOrder: ServiceOrder) => {
     try {
-      await dbService.updateOrder(updatedOrder.id, updatedOrder);
-      setOrder(updatedOrder);
+      if (isTrialUser(currentUser)) {
+        // Modo trial: salva no sessionStorage
+        const allOrders = getTrialOrders();
+        const idx = allOrders.findIndex(o => o.id === updatedOrder.id);
+        if (idx >= 0) allOrders[idx] = updatedOrder;
+        else allOrders.unshift(updatedOrder);
+        saveTrialOrders(allOrders);
+        setOrder(updatedOrder);
+      } else {
+        await dbService.updateOrder(updatedOrder.id, updatedOrder);
+        setOrder(updatedOrder);
+      }
     } catch (error) {
       console.error("Erro ao persistir mudanças na OS:", error);
       setToast({ message: 'Erro ao salvar mudanças.', type: 'error' });
@@ -127,6 +175,14 @@ const OrderDetails: React.FC = () => {
         techId: editedTechId,
         techName: selectedTech?.name || order.techName
       };
+
+      if (isTrialUser(currentUser)) {
+        // Modo trial: não precisa chamar dbService, apenas atualiza estado
+        setOrder(updatedOrder);
+        if (type !== 'none') setToast({ message: 'Dados da OS salvos!', type: 'success' });
+        setIsSaving(false); setIsSavingDesc(false); setIsSavingReport(false);
+        return updatedOrder;
+      }
 
       await dbService.updateOrder(order.id, updatedOrder);
       setOrder(updatedOrder);

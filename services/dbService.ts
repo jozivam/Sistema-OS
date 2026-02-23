@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Company, User, Customer, ServiceOrder, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan, AppNotification, NotificationType } from '../types';
+import { Company, User, Customer, ServiceOrder, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan, CompanyPeriod, PlanPricing, AppNotification, NotificationType } from '../types';
 
 // Mappers to convert between Supabase snake_case and App camelCase
 const mapCompany = (raw: any): Company => {
@@ -24,6 +24,7 @@ const mapCompany = (raw: any): Company => {
         address: raw.address,
         city: raw.city,
         plan: raw.plan as CompanyPlan,
+        period: (raw.plan_period || 'MENSAL') as CompanyPeriod,
         monthlyFee: Number(raw.monthly_fee),
         status: raw.status as 'ACTIVE' | 'BLOCKED',
         createdAt: raw.created_at,
@@ -108,9 +109,10 @@ export const dbService = {
         if (updates.address) dbUpdates.address = updates.address;
         if (updates.city) dbUpdates.city = updates.city;
         if (updates.plan) dbUpdates.plan = updates.plan;
+        if (updates.period) dbUpdates.plan_period = updates.period;
         if (updates.monthlyFee !== undefined) dbUpdates.monthly_fee = updates.monthlyFee;
         if (updates.status) dbUpdates.status = updates.status;
-        if (updates.expiresAt) dbUpdates.expires_at = updates.expiresAt;
+        if (updates.expiresAt !== undefined) dbUpdates.expires_at = updates.expiresAt;
         if (updates.settings) dbUpdates.settings = updates.settings;
 
         const { error } = await supabase.from('companies').update(dbUpdates).eq('id', id);
@@ -618,5 +620,65 @@ export const dbService = {
         });
     },
     // Exportando o cliente para uso em listeners realtime
-    supabase
+    supabase,
+
+    // === Precificação dos Planos ===
+    async getPlanPricing(): Promise<PlanPricing[]> {
+        const { data, error } = await supabase
+            .from('plan_pricing')
+            .select('*')
+            .order('plan_type')
+            .order('period');
+        if (error) return [];
+        return (data || []).map(raw => ({
+            id: raw.id,
+            planType: raw.plan_type,
+            period: raw.period as CompanyPeriod,
+            basePrice: Number(raw.base_price),
+            discountPct: Number(raw.discount_pct),
+            updatedAt: raw.updated_at
+        }));
+    },
+
+    async setPlanPricing(planType: string, period: string, basePrice: number, discountPct: number): Promise<void> {
+        const { error } = await supabase
+            .from('plan_pricing')
+            .upsert(
+                { plan_type: planType, period, base_price: basePrice, discount_pct: discountPct, updated_at: new Date().toISOString() },
+                { onConflict: 'plan_type,period' }
+            );
+        if (error) throw error;
+    },
+
+    // === Contagem de Admins ===
+    async getAdminCount(companyId: string): Promise<number> {
+        const { count, error } = await supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('company_id', companyId)
+            .eq('role', 'Administrador')
+            .eq('is_blocked', false);
+        if (error) return 0;
+        return count || 0;
+    },
+
+    // === Sessões Ativas ===
+    async forceLogoutUser(userId: string): Promise<void> {
+        const { error } = await supabase
+            .from('users')
+            .update({ active_session_token: null, session_updated_at: null })
+            .eq('id', userId);
+        if (error) throw error;
+    },
+
+    async getActiveSessionUsers(companyId?: string): Promise<User[]> {
+        let query = supabase
+            .from('users')
+            .select('*')
+            .not('active_session_token', 'is', null);
+        if (companyId) query = query.eq('company_id', companyId);
+        const { data, error } = await query;
+        if (error) return [];
+        return (data || []).map(mapUser);
+    },
 };

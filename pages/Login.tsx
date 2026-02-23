@@ -5,9 +5,11 @@ import { UserRole } from '../types';
 
 interface LoginProps {
   onLogin: (user: any) => void;
+  sessionError?: string | null;
+  onClearSessionError?: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, sessionError, onClearSessionError }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -52,6 +54,21 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {sessionError && (
+              <div className="bg-orange-50 text-orange-700 p-4 rounded-lg text-xs font-bold flex items-start gap-2 border border-orange-200 animate-in fade-in slide-in-from-top-2">
+                <i className="fa-solid fa-user-lock mt-0.5 shrink-0 text-orange-500"></i>
+                <div className="flex-1">
+                  <p className="font-black uppercase text-[10px] tracking-widest mb-1">Sessão em Uso</p>
+                  <p className="normal-case">{sessionError}</p>
+                </div>
+                {onClearSessionError && (
+                  <button type="button" onClick={onClearSessionError} className="text-orange-400 hover:text-orange-600">
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                )}
+              </div>
+            )}
+
             {isOffline && (
               <div className="bg-amber-50 text-amber-700 p-4 rounded-lg text-[10px] font-black uppercase flex items-start gap-2 border border-amber-200 mb-4">
                 <i className="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
