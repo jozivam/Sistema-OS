@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, UserRole, Company, AppNotification, NotificationType } from '../types';
 import { authService } from '../services/authService';
 import { dbService } from '../services/dbService';
-import { isTrialUser, switchTrialRole, cleanupTrial, getCurrentTrialRoleLabel } from '../services/trialService';
+import { isTrialUser, cleanupTrial } from '../services/trialService';
 import { useEffect } from 'react';
 
 interface LayoutProps {
@@ -145,10 +145,16 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
     }
   };
 
-  const handleSwitchRole = () => {
-    const nextUser = switchTrialRole();
-    if (nextUser) onUserChange(nextUser);
+  const handleContratar = () => {
+    cleanupTrial();
+    onUserChange(null);
+    // Usamos um pequeno timeout para garantir que a mudança de estado do usuário ocorra primeiro
+    // e o redirecionamento aconteça de forma limpa
+    setTimeout(() => {
+      window.location.href = '/#/?scrollTo=pricing';
+    }, 50);
   };
+
 
   const navItems = [];
 
@@ -208,13 +214,13 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
             <i className="fa-solid fa-flask text-white/80" />
             <span>AMBIENTE DE DEMONSTRAÇÃO — Os dados criados aqui não são salvos.</span>
           </div>
-          <a
-            href="#/login"
+          <button
+            onClick={handleContratar}
             className="hidden md:flex items-center gap-2 bg-white text-orange-600 rounded-lg px-4 py-1 text-sm font-black hover:bg-orange-50 transition-all shadow"
           >
             <i className="fa-solid fa-file-signature" />
             Contratar agora
-          </a>
+          </button>
         </div>
       )}
 
@@ -225,12 +231,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
             <i className="fa-solid fa-microchip text-blue-500"></i> {isDev ? 'OsRepo' : (company?.tradeName || company?.name || 'Sistema OS')}
           </h1>
           <div className="flex items-center gap-2">
-            {isTrial && (
-              <a href="#/login" className="flex items-center gap-1.5 bg-orange-500 text-white rounded-lg px-3 py-1.5 text-xs font-black">
-                <i className="fa-solid fa-file-signature" />
-                Contratar
-              </a>
-            )}
             <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800">
               <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl text-blue-500`}></i>
             </button>
@@ -263,25 +263,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
             ))}
 
             {/* Role Switcher — apenas no trial */}
-            {isTrial && (
-              <div className="mt-4 pt-4 border-t border-slate-700/50">
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-400 px-4 mb-2">Modo Demo</p>
-                <button
-                  onClick={handleSwitchRole}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 transition-all font-semibold text-[11px] uppercase tracking-wider border border-orange-500/20"
-                >
-                  <i className="fa-solid fa-shuffle w-5 text-center text-sm text-orange-400" />
-                  <span>{getCurrentTrialRoleLabel() === 'admin' ? 'Ver como Técnico' : 'Ver como Admin'}</span>
-                </button>
-                <a
-                  href="#/login"
-                  className="mt-2 w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-600/10 text-blue-300 hover:bg-blue-600/20 transition-all font-semibold text-[11px] uppercase tracking-wider border border-blue-500/20"
-                >
-                  <i className="fa-solid fa-file-signature w-5 text-center text-sm text-blue-400" />
-                  <span>Contratar agora</span>
-                </a>
-              </div>
-            )}
           </nav>
 
           <div className="p-4 mt-auto">
@@ -315,16 +296,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Contratar button — trial only */}
-              {isTrial && (
-                <a
-                  href="#/login"
-                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl px-5 py-2.5 text-xs font-black shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50 hover:-translate-y-0.5 transition-all"
-                >
-                  <i className="fa-solid fa-file-signature" />
-                  Contratar agora
-                </a>
-              )}
               <div className="relative">
                 <button
                   onClick={() => setShowNotifications(!showNotifications)}

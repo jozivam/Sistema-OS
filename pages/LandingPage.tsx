@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import './LandingPage.css';
 
 // Preços padrão (fallback se banco não disponível)
@@ -30,6 +31,7 @@ function calcPrice(base: number, discount: number, months: number) {
 }
 
 const LandingPage: React.FC = () => {
+    const location = useLocation();
     const [scrolled, setScrolled] = useState(false);
     const [openFaq, setOpenFaq] = useState<number | null>(null);
     const [selectedPeriod, setSelectedPeriod] = useState<string>('MENSAL');
@@ -40,11 +42,40 @@ const LandingPage: React.FC = () => {
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
+    // Efeito para lidar com scroll via parâmetro de busca (necessário para HashRouter)
+    useEffect(() => {
+        const getScrollParam = () => {
+            const params = new URLSearchParams(location.search);
+            let scrollTo = params.get('scrollTo');
+            if (!scrollTo && window.location.hash.includes('scrollTo=')) {
+                const queryPart = window.location.hash.split('?')[1];
+                if (queryPart) {
+                    const hashParams = new URLSearchParams(queryPart);
+                    scrollTo = hashParams.get('scrollTo');
+                }
+            }
+            return scrollTo;
+        };
+
+        const scrollTo = getScrollParam();
+        if (scrollTo) {
+            const timer = setTimeout(() => {
+                const element = document.getElementById(scrollTo);
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    const baseUrl = window.location.hash.split('?')[0];
+                    window.history.replaceState(null, '', baseUrl);
+                }
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [location]);
+
     const faqs = [
         { q: 'O OsRepo funciona para qualquer tipo de empresa?', a: 'Sim! O OsRepo foi projetado para qualquer empresa que trabalhe com ordens de serviço: assistências técnicas, provedores de internet, empresas de manutenção, segurança eletrônica, energia solar e muito mais.' },
         { q: 'Preciso instalar algum programa?', a: 'Não! O OsRepo é 100% online (SaaS). Basta ter acesso à internet e um navegador. Funciona no computador, tablet e smartphone.' },
         { q: 'Meus dados ficam seguros?', a: 'Absolutamente. Utilizamos infraestrutura de nível empresarial com criptografia de dados em repouso e em trânsito, backups automáticos e conformidade com a LGPD.' },
-        { q: 'Como funciona o período de teste?', a: 'Você pode testar o plano Profissional gratuitamente por 14 dias, sem precisar inserir cartão de crédito. Após o período, escolha o plano que melhor se encaixa na sua operação.' },
+        { q: 'Como funciona a implantação?', a: 'O OsRepo é 100% online (SaaS). Basta ter acesso à internet e um navegador. Nossa equipe auxilia você em toda a configuração inicial para que sua empresa comece a operar com agilidade.' },
         { q: 'Posso migrar meus dados de outro sistema?', a: 'Sim! Nossa equipe oferece suporte dedicado para importação de dados de planilhas e outros sistemas. Entre em contato para entender o processo.' },
         { q: 'Tenho suporte técnico disponível?', a: 'Sim. Todos os planos possuem suporte via chat e e-mail. O plano Enterprise conta com gerente de conta dedicado e SLA prioritário.' },
     ];
@@ -401,10 +432,7 @@ const LandingPage: React.FC = () => {
                     <h2>Dê o próximo passo para uma gestão mais profissional</h2>
                     <p>Pare de perder informações e atrasar atendimentos. Comece a usar o OsRepo hoje, gratuitamente.</p>
                     <div className="cta-options">
-                        <a href="#/trial" className="btn-primary btn-large">
-                            <i className="fa-solid fa-flask"></i> Testar Grátis por 14 dias
-                        </a>
-                        <a href="https://wa.me/5563991096645?text=Olá,%20gostaria%20de%20solicitar%20uma%20demonstração%20do%20OsRepo." target="_blank" rel="noopener noreferrer" className="btn-outline btn-large">
+                        <a href="https://wa.me/5563991096645?text=Olá,%20gostaria%20de%20solicitar%20uma%20demonstração%20do%20OsRepo." target="_blank" rel="noopener noreferrer" className="btn-primary btn-large" style={{ width: '100%', maxWidth: '350px' }}>
                             <i className="fa-brands fa-whatsapp"></i> Solicitar Demonstração
                         </a>
                     </div>
