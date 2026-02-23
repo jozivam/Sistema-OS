@@ -335,7 +335,11 @@ const LandingPage: React.FC = () => {
                             <li><i className="fa-solid fa-check"></i> Onboarding personalizado</li>
                             <li><i className="fa-solid fa-check"></i> Gerente de conta dedicado</li>
                         </ul>
-                        <a href="#/login" className="btn-pricing-outline">Falar com Especialista</a>
+                        <div className="pricing-contact-btns">
+                            <a href="https://wa.me/5563991096645?text=Olá,%20gostaria%20de%20falar%20com%20um%20especialista%20sobre%20o%20OsRepo." target="_blank" rel="noopener noreferrer" className="btn-pricing-outline">
+                                <i className="fa-brands fa-whatsapp"></i> Falar com Especialista
+                            </a>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -400,8 +404,8 @@ const LandingPage: React.FC = () => {
                         <a href="#/trial" className="btn-primary btn-large">
                             <i className="fa-solid fa-flask"></i> Testar Grátis por 14 dias
                         </a>
-                        <a href="#/login" className="btn-outline btn-large">
-                            <i className="fa-solid fa-comments"></i> Solicitar Demonstração
+                        <a href="https://wa.me/5563991096645?text=Olá,%20gostaria%20de%20solicitar%20uma%20demonstração%20do%20OsRepo." target="_blank" rel="noopener noreferrer" className="btn-outline btn-large">
+                            <i className="fa-brands fa-whatsapp"></i> Solicitar Demonstração
                         </a>
                     </div>
                     <div className="hero-trust" style={{ justifyContent: 'center', marginTop: '2rem' }}>
@@ -448,7 +452,7 @@ const LandingPage: React.FC = () => {
                         <h4>Contato</h4>
                         <ul>
                             <li><i className="fa-solid fa-envelope"></i> contato@osrepo.com.br</li>
-                            <li><i className="fa-brands fa-whatsapp"></i> (XX) XXXXX-XXXX</li>
+                            <li><i className="fa-brands fa-whatsapp"></i> (63) 99109-6645</li>
                         </ul>
                     </div>
                 </div>
@@ -460,6 +464,16 @@ const LandingPage: React.FC = () => {
                     </div>
                 </div>
             </footer>
+
+            <a
+                href="https://wa.me/5563991096645?text=Olá,%20gostaria%20de%20saber%20mais%20sobre%20o%20sistema%20OsRepo."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="whatsapp-float"
+                aria-label="Falar pelo WhatsApp"
+            >
+                <i className="fa-brands fa-whatsapp"></i>
+            </a>
         </div>
     );
 };
