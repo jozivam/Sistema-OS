@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { dbService } from '../services/dbService';
 
 const CheckoutPage: React.FC = () => {
     const [searchParams] = useSearchParams();
@@ -71,7 +72,7 @@ const CheckoutPage: React.FC = () => {
     const handleProcessOrder = async () => {
         setLoading(true);
         try {
-            const { supabase } = await import('../services/dbService').then(m => m.dbService as any);
+            const { supabase } = dbService as any;
 
             const { data, error } = await supabase.functions.invoke('process-checkout', {
                 body: {
