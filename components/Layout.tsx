@@ -165,6 +165,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
     navItems.push({ path: '/dashboard', label: 'Monitoramento', icon: 'fa-desktop' });
     navItems.push({ path: '/developer?tab=backup', label: 'Backups', icon: 'fa-database' });
     navItems.push({ path: '/developer?tab=sessions', label: 'Sessões', icon: 'fa-users-gear' });
+    navItems.push({ path: '/developer?tab=api', label: 'API do Sistema', icon: 'fa-code' });
     navItems.push({ path: '/developer/configuracoes', label: 'Configurações', icon: 'fa-gears' });
   } else {
     navItems.push({ path: '/dashboard', label: 'Painel', icon: 'fa-chart-line' });

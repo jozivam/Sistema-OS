@@ -1,6 +1,6 @@
-
 import { supabase } from './supabaseClient';
 import { Company, User, Customer, ServiceOrder, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan, CompanyPeriod, PlanPricing, AppNotification, NotificationType } from '../types';
+import { IDatabaseService } from './database.types';
 
 // Mappers to convert between Supabase snake_case and App camelCase
 const mapCompany = (raw: any): Company => {
@@ -84,7 +84,7 @@ const mapOrder = (raw: any): ServiceOrder => ({
     attachments: raw.attachments || []
 });
 
-export const dbService = {
+export const dbService: IDatabaseService = {
     // Empresas
     async getCompanies(): Promise<Company[]> {
         const { data, error } = await supabase.from('companies').select('*');

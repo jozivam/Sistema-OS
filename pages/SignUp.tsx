@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 
 const SignUp: React.FC = () => {
+    const [companyName, setCompanyName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
@@ -17,7 +18,34 @@ const SignUp: React.FC = () => {
         setError('');
 
         try {
-            await authService.signUp(email, password, name);
+            // 1. Criar a empresa primeiro
+            const { dbService } = await import('../services/dbService');
+            const company = await dbService.createCompany({
+                name: companyName,
+                corporateName: companyName,
+                tradeName: companyName,
+                email: email, // Usa o e-mail do admin como e-mail da empresa inicial
+                phone: '',
+                document: '',
+                address: '',
+                city: '',
+                status: 'ACTIVE',
+                plan: 'MENSAL' as any,
+                period: 'MENSAL' as any,
+                monthlyFee: 0,
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                settings: {
+                    enableAI: true,
+                    enableAttachments: true,
+                    enableChat: true,
+                    enableHistory: true,
+                    orderTypes: ["Instalação", "Manutenção", "Orçamento", "Retirada", "Suporte"]
+                }
+            });
+
+            // 2. Criar o usuário vinculado a essa empresa
+            await authService.signUp(email, password, name, company.id);
+
             setSuccess(true);
             setTimeout(() => navigate('/'), 3000);
         } catch (err: any) {
@@ -73,7 +101,20 @@ const SignUp: React.FC = () => {
                         )}
 
                         <div>
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nome Completo</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nome da Empresa</label>
+                            <input
+                                type="text"
+                                required
+                                disabled={loading}
+                                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium text-sm disabled:opacity-50"
+                                placeholder="Sua empresa"
+                                value={companyName}
+                                onChange={(e) => setCompanyName(e.target.value)}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Seu Nome Completo</label>
                             <input
                                 type="text"
                                 required

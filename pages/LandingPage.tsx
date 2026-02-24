@@ -312,7 +312,6 @@ const LandingPage: React.FC = () => {
                                     <li><i className="fa-solid fa-check"></i> Gestão completa de O.S.</li>
                                     <li><i className="fa-solid fa-check"></i> Histórico de clientes</li>
                                     <li><i className="fa-solid fa-check"></i> Suporte via chat</li>
-                                    <li className="disabled"><i className="fa-solid fa-xmark"></i> Relatórios com IA</li>
                                 </ul>
                                 <a href={`#/checkout?plan=OURO&period=${selectedPeriod}`} className="btn-pricing-outline">Começar Agora</a>
                             </div>
@@ -341,7 +340,6 @@ const LandingPage: React.FC = () => {
                                     <li><i className="fa-solid fa-check"></i> Até 5 administradores</li>
                                     <li><i className="fa-solid fa-check"></i> Usuários ilimitados</li>
                                     <li><i className="fa-solid fa-check"></i> O.S. ilimitadas</li>
-                                    <li><i className="fa-solid fa-check"></i> Relatórios com IA</li>
                                     <li><i className="fa-solid fa-check"></i> Anexos em O.S.</li>
                                     <li><i className="fa-solid fa-check"></i> Suporte prioritário</li>
                                 </ul>

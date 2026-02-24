@@ -19,6 +19,7 @@ const CompanyManagement: React.FC = () => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [isCompanyModalOpen, setCompanyModalOpen] = useState(false);
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [isDeleteCompanyModalOpen, setDeleteCompanyModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [paymentToDelete, setPaymentToDelete] = useState<CompanyPayment | null>(null);
@@ -42,7 +43,7 @@ const CompanyManagement: React.FC = () => {
     phone: '',
     address: '',
     city: '',
-    plan: CompanyPlan.MENSAL,
+    plan: CompanyPlan.OURO,
     monthlyFee: 0,
     status: 'ACTIVE' as 'ACTIVE' | 'BLOCKED',
     expiresAt: '',
@@ -198,9 +199,9 @@ const CompanyManagement: React.FC = () => {
     const now = new Date();
     let monthsToAdd = 1;
     switch (newPlan) {
-      case CompanyPlan.MENSAL: monthsToAdd = 1; break;
-      case CompanyPlan.TRIMESTRAL: monthsToAdd = 3; break;
-      case CompanyPlan.ANUAL: monthsToAdd = 12; break;
+      case CompanyPlan.OURO: monthsToAdd = 1; break;
+      case CompanyPlan.DIAMANTE: monthsToAdd = 3; break;
+      case CompanyPlan.CUSTOM: monthsToAdd = 12; break;
       case CompanyPlan.TESTE: monthsToAdd = 1; break;
     }
 
@@ -242,9 +243,9 @@ const CompanyManagement: React.FC = () => {
 
     let monthsToAdd = 0;
     switch (company.plan) {
-      case CompanyPlan.MENSAL: monthsToAdd = 1; break;
-      case CompanyPlan.TRIMESTRAL: monthsToAdd = 3; break;
-      case CompanyPlan.ANUAL: monthsToAdd = 12; break;
+      case CompanyPlan.OURO: monthsToAdd = 1; break;
+      case CompanyPlan.DIAMANTE: monthsToAdd = 3; break;
+      case CompanyPlan.CUSTOM: monthsToAdd = 12; break;
       case CompanyPlan.TESTE: monthsToAdd = 1; break;
       case CompanyPlan.LIVRE: monthsToAdd = 0; break;
     }
@@ -326,6 +327,18 @@ const CompanyManagement: React.FC = () => {
     }
   };
 
+  const handleDeleteCompany = async () => {
+    if (!company) return;
+    try {
+      await dbService.deleteCompany(company.id);
+      setToast({ message: 'Empresa e todos os dados foram removidos!', type: 'success' });
+      setTimeout(() => navigate('/developer'), 2000);
+    } catch (error) {
+      console.error("Erro ao excluir empresa:", error);
+      setToast({ message: 'Erro ao excluir empresa.', type: 'error' });
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       {toast && (
@@ -356,6 +369,16 @@ const CompanyManagement: React.FC = () => {
         confirmText="Excluir Registro"
       />
 
+      <ConfirmModal
+        isOpen={isDeleteCompanyModalOpen}
+        title="EXCLUIR EMPRESA"
+        message={`ATENÇÃO: Deseja realmente excluir permanentemente a empresa "${company.tradeName || company.name}" e TODOS os seus dados (usuários, clientes, ordens e faturamento)? Esta ação não pode ser desfeita.`}
+        onConfirm={handleDeleteCompany}
+        onCancel={() => setDeleteCompanyModalOpen(false)}
+        variant="danger"
+        confirmText="Excluir Permanentemente"
+      />
+
       <div className="flex items-center justify-between">
         <div>
           <Link to="/developer" className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-2 mb-2">
@@ -380,6 +403,12 @@ const CompanyManagement: React.FC = () => {
             className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
           >
             Novo Usuário
+          </button>
+          <button
+            onClick={() => setDeleteCompanyModalOpen(true)}
+            className="bg-white border-2 border-red-500 text-red-600 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-500/10 active:scale-95 transition-all flex items-center gap-2 hover:bg-red-50"
+          >
+            <i className="fa-solid fa-trash-can"></i> Excluir Empresa
           </button>
         </div>
       </div>
@@ -557,8 +586,8 @@ const CompanyManagement: React.FC = () => {
                       </td>
                       <td className="px-8 py-5 text-xs font-medium text-slate-600 lowercase">{u.email}</td>
                       <td className="px-8 py-5">
-                        <span className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl text-xs font-black font-mono shadow-inner border border-orange-100">
-                          {u.password || '******'}
+                        <span className={`px-3 py-1.5 rounded-xl text-xs font-black font-mono shadow-inner border ${u.password ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-slate-50 text-slate-300 border-slate-100'}`}>
+                          {u.password || 'NÃO REGISTRADA'}
                         </span>
                       </td>
                       <td className="px-8 py-5 text-right space-x-2">
@@ -769,9 +798,9 @@ const CompanyManagement: React.FC = () => {
                       value={companyFormData.plan}
                       onChange={e => handlePlanChange(e.target.value as CompanyPlan)}
                     >
-                      <option value={CompanyPlan.MENSAL}>MENSAL</option>
-                      <option value={CompanyPlan.TRIMESTRAL}>TRIMESTRAL</option>
-                      <option value={CompanyPlan.ANUAL}>ANUAL</option>
+                      <option value={CompanyPlan.OURO}>OURO</option>
+                      <option value={CompanyPlan.DIAMANTE}>DIAMANTE</option>
+                      <option value={CompanyPlan.CUSTOM}>CUSTOM</option>
                       <option value={CompanyPlan.TESTE}>TESTE</option>
                       <option value={CompanyPlan.LIVRE}>LIVRE</option>
                     </select>
@@ -889,10 +918,14 @@ const CompanyManagement: React.FC = () => {
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Senha de Acesso</label>
                     <input
                       type="text" required
+                      placeholder="Defina uma senha..."
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-blue-600"
                       value={userFormData.password}
                       onChange={e => setUserFormData({ ...userFormData, password: e.target.value })}
                     />
+                    <p className="text-[8px] font-bold text-slate-400 uppercase mt-2">
+                      {editingUser ? "A senha só aparece aqui se foi salva durante o cadastro." : "Esta senha será usada para o primeiro acesso."}
+                    </p>
                   </div>
                 </div>
 

@@ -1,48 +1,50 @@
 import { supabase } from './supabaseClient';
 import { User, UserRole } from '../types';
+import { IAuthService } from './database.types';
 
 const SESSION_KEY = 'sistema_os_session';
 const SESSION_TOKEN_KEY = 'sistema_os_session_token';
 
-export const authService = {
-    async signIn(email: string, password: string) {
-        console.group('DEBUG LOGIN');
-        console.log('Tentando logar com:', email);
+const mapAuthUser = (sbUser: any): User => ({
+    id: sbUser.id,
+    email: sbUser.email || '',
+    name: sbUser.user_metadata?.name || sbUser.app_metadata?.name || 'Usuário',
+    role: (sbUser.app_metadata?.role || sbUser.user_metadata?.role) as UserRole,
+    companyId: sbUser.app_metadata?.company_id || sbUser.user_metadata?.company_id,
+    phone: sbUser.user_metadata?.phone,
+});
 
+export const authService: IAuthService = {
+    async signIn(email: string, password: string) {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+        });
+
+        if (authError) {
+            throw new Error('E-mail ou senha incorretos.');
+        }
+
+        if (!data.user) {
+            throw new Error('Usuário não encontrado.');
+        }
+
+        // Buscar dados complementares do perfil público
         const { data: userData, error: userError } = await supabase
             .from('users')
             .select('*')
-            .eq('email', email)
-            .eq('password', password)
+            .eq('id', data.user.id)
             .single();
 
-        if (userError) {
-            console.error('Erro de banco:', userError);
-            console.groupEnd();
-            throw new Error('E-mail ou senha incorretos.');
+        if (userError || !userData) {
+            throw new Error('Perfil de usuário não encontrado no banco de dados.');
         }
-
-        if (!userData) {
-            console.warn('Nenhum usuário encontrado com esses dados.');
-            console.groupEnd();
-            throw new Error('E-mail ou senha incorretos.');
-        }
-
-        console.log('Usuário encontrado:', userData);
-        console.groupEnd();
 
         if (userData.is_blocked) {
+            // Se estiver bloqueado, desloga do auth também
+            await supabase.auth.signOut();
             throw new Error('Este usuário está bloqueado.');
         }
-
-        // Gerar token de sessão único (UUID simples)
-        const sessionToken = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-
-        // Persistir token no banco para detecção de sessão dupla
-        await supabase.from('users').update({
-            active_session_token: sessionToken,
-            session_updated_at: new Date().toISOString()
-        }).eq('id', userData.id);
 
         const user: User = {
             id: userData.id,
@@ -53,12 +55,12 @@ export const authService = {
             role: userData.role as UserRole,
             city: userData.city,
             isBlocked: userData.is_blocked,
-            password: userData.password
+            password: userData.password // Mantido para compatibilidade se necessário
         };
 
-        // Salvar sessão e token localmente
+        // Salvar sessão localmente (backup do session storage se necessário, 
+        // embora o Supabase Auth já gerencie o dele)
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
-        sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
         return user;
     },
 
@@ -90,10 +92,16 @@ export const authService = {
             }
         }
 
-        // Se não houver sessão normal, tenta carregar a sessão Trial (se ativa)
+        // Tenta buscar do Supabase se não estiver no cache local
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (!error && user) {
+            const mapped = mapAuthUser(user);
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify(mapped));
+            return mapped;
+        }
+
+        // Fallback para Trial
         try {
-            // Importação dinâmica para evitar dependência circular pesada se necessário, 
-            // mas aqui podemos usar direto se importado no topo
             const { getCurrentTrialUser } = await import('./trialService');
             return getCurrentTrialUser();
         } catch {
@@ -133,17 +141,23 @@ export const authService = {
     },
 
 
-    async signUp(email: string, password: string, name: string) {
-        const { data, error } = await supabase.from('users').insert({
-            name: name,
-            email: email,
-            password: password,
-            role: UserRole.TECH,
-            is_blocked: false
-        }).select().single();
+    async signUp(email: string, password: string, name: string, companyId: string) {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    name,
+                    company_id: companyId
+                }
+            }
+        });
 
         if (error) throw error;
-        return data;
+        if (!data.user) throw new Error('Falha ao criar usuário na autenticação.');
+
+        // O trigger no banco deve cuidar de inserir em public.users
+        return mapAuthUser(data.user);
     },
 
     // Desenvolvedor força logout de um usuário limpando o token do banco
@@ -157,5 +171,23 @@ export const authService = {
 
     isPlaceholderClient() {
         return (supabase as any).supabaseUrl === 'https://placeholder.supabase.co';
+    },
+
+    async adminCreateUser(userData: { email: string, password?: string, name: string, role: string, company_id: string }) {
+        // Se não houver senha, gera uma aleatória de 8 caracteres
+        const password = userData.password || Math.random().toString(36).slice(-8);
+
+        const { data, error } = await supabase.functions.invoke('create-user', {
+            body: {
+                email: userData.email,
+                password,
+                name: userData.name,
+                role: userData.role,
+                company_id: userData.company_id
+            }
+        });
+
+        if (error) throw error;
+        return { user: data.user, password };
     }
 };

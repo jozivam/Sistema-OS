@@ -115,17 +115,40 @@ const Users: React.FC = () => {
           ...(formData.password && { password: formData.password })
         });
         setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
+        alert("Usuário atualizado com sucesso!");
       } else {
-        const newUser = await dbService.createUser({
-          companyId: currentUser?.companyId || '',
-          ...formData
+        setLoading(true);
+        // Automação: Cria no Auth e na Tabela Pública via Edge Function
+        const { user: newUserAuth, password: finalPassword } = await authService.adminCreateUser({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          role: formData.role,
+          company_id: currentUser?.companyId || ''
         });
+
+        // O trigger no banco já cria o registro em public.users, 
+        // mas vamos atualizar o estado local para exibir imediatamente
+        const newUser: User = {
+          id: newUserAuth.id,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          role: formData.role,
+          companyId: currentUser?.companyId || '',
+          city: formData.city,
+          isBlocked: false
+        };
+
         setUsers(prev => [...prev, newUser]);
+        alert(`Usuário cadastrado com sucesso!\n\nE-mail: ${formData.email}\nSenha: ${finalPassword}`);
       }
       setModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao salvar usuário:", error);
-      alert("Erro ao salvar usuário.");
+      alert(`Erro ao salvar usuário: ${error.message || 'Verifique se a Edge Function foi implantada.'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -311,16 +334,6 @@ const Users: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleSave} className="p-6 space-y-4">
-              {!editingUserId && (
-                <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl mb-4">
-                  <p className="text-[10px] font-bold text-amber-700 uppercase leading-relaxed">
-                    <i className="fa-solid fa-triangle-exclamation mr-1"></i>
-                    Aviso: O cadastro manual abaixo cria apenas o perfil.
-                    Para acesso por e-mail, o usuário deve se cadastrar via "/signup"
-                    ou ser convidado pelo Dashboard do Supabase.
-                  </p>
-                </div>
-              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Nome Completo</label>

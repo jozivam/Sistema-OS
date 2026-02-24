@@ -49,7 +49,7 @@ const CompanyTable: React.FC<CompanyTableProps> = ({
         switch (plan) {
             case CompanyPlan.TESTE: return 'bg-orange-100 text-orange-600';
             case CompanyPlan.LIVRE: return 'bg-emerald-100 text-emerald-600';
-            case CompanyPlan.ANUAL: return 'bg-purple-100 text-purple-600';
+            case CompanyPlan.CUSTOM: return 'bg-purple-100 text-purple-600';
             default: return 'bg-blue-100 text-blue-600';
         }
     };
@@ -132,9 +132,14 @@ const CompanyTable: React.FC<CompanyTableProps> = ({
                                     </span>
                                 </td>
                                 <td className="px-8 py-5">
-                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${getPlanBadge(company.plan)}`}>
-                                        {company.plan}
-                                    </span>
+                                    <div className="flex flex-col gap-1">
+                                        <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest w-fit ${getPlanBadge(company.plan)}`}>
+                                            {company.plan}
+                                        </span>
+                                        <span className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter">
+                                            {company.period || 'MENSAL'}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td className="px-8 py-5">
                                     <span className="text-[10px] font-black text-slate-700">

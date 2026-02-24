@@ -11,6 +11,7 @@ import CompanyTable from '../components/developer/CompanyTable';
 import CompanyInsertModal from '../components/developer/CompanyInsertModal';
 import SupportTab from '../components/developer/SupportTab';
 import BackupTab from '../components/developer/BackupTab';
+import ApiTab from '../components/developer/ApiTab';
 
 const DeveloperPanel: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -22,7 +23,7 @@ const DeveloperPanel: React.FC = () => {
   const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
   const [isInsertModalOpen, setInsertModalOpen] = useState(false);
   const [showAllCompanies, setShowAllCompanies] = useState(false);
-  const [activeTab, setActiveTab] = useState<'companies' | 'support' | 'backup' | 'sessions'>('companies');
+  const [activeTab, setActiveTab] = useState<'companies' | 'support' | 'backup' | 'sessions' | 'api'>('companies');
   const [supportChannels, setSupportChannels] = useState<{ companyId: string, companyName: string, lastMessage: string, timestamp: string }[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [channelMessages, setChannelMessages] = useState<ChatMessage[]>([]);
@@ -80,12 +81,12 @@ const DeveloperPanel: React.FC = () => {
   };
 
   useEffect(() => {
-    if (currentTab === 'support' || currentTab === 'backup' || currentTab === 'companies' || currentTab === 'sessions') {
+    if (currentTab === 'support' || currentTab === 'backup' || currentTab === 'companies' || currentTab === 'sessions' || currentTab === 'api') {
       setActiveTab(currentTab as any);
     }
   }, [currentTab]);
 
-  const handleTabChange = (tab: 'companies' | 'support' | 'backup' | 'sessions') => {
+  const handleTabChange = (tab: 'companies' | 'support' | 'backup' | 'sessions' | 'api') => {
     setActiveTab(tab);
     if (tab === 'companies') {
       searchParams.delete('tab');
@@ -467,6 +468,8 @@ const DeveloperPanel: React.FC = () => {
             </div>
           )}
         </div>
+      ) : activeTab === 'api' ? (
+        <ApiTab />
       ) : (
         <BackupTab
           toastHandler={(msg, type) => setToast({ message: msg, type })}

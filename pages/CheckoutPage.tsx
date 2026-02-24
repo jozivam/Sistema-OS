@@ -12,21 +12,118 @@ const CheckoutPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'PIX' | 'BOLETO'>('CARD');
 
-    // Mock prices matching LandingPage
+    const [formData, setFormData] = useState({
+        companyName: '',
+        document: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        userName: '',
+        adminEmail: '',
+        password: '',
+        cardHolder: '',
+        cardNumber: '',
+        expiryDate: '',
+        cvv: ''
+    });
+
     const prices: any = {
         OURO: { MENSAL: 97, TRIMESTRAL: 276.45, SEMESTRAL: 523.80, ANUAL: 989.40 },
         DIAMANTE: { MENSAL: 197, TRIMESTRAL: 561.45, SEMESTRAL: 1063.80, ANUAL: 2009.40 }
     };
 
     const currentPrice = prices[plan]?.[period] || 0;
-    const periodLabel = { MENSAL: 'mês', TRIMESTRAL: 'trimestre', SEMESTRAL: 'semestre', ANUAL: 'ano' }[period as keyof typeof prices.OURO] || 'mês';
 
-    const handleProcessOrder = () => {
+    // MÁSCARAS DE FORMATAÇÃO
+    const formatDocument = (v: string) => {
+        const val = v.replace(/\D/g, '');
+        if (val.length <= 11) {
+            return val.replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+                .substring(0, 14);
+        }
+        return val.replace(/(\d{2})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d)/, '$1/$2')
+            .replace(/(\d{4})(\d{1,2})/, '$1-$2')
+            .substring(0, 18);
+    };
+
+    const formatPhone = (v: string) => {
+        const val = v.replace(/\D/g, '');
+        return val.replace(/(\d{2})(\d)/, '($1) $2')
+            .replace(/(\d{5})(\d)/, '$1-$2')
+            .substring(0, 15);
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        let finalValue = value;
+
+        if (name === 'document') finalValue = formatDocument(value);
+        if (name === 'phone') finalValue = formatPhone(value);
+
+        setFormData(prev => ({ ...prev, [name]: finalValue }));
+    };
+
+    const handleProcessOrder = async () => {
         setLoading(true);
-        setTimeout(() => {
-            setLoading(false);
+        try {
+            const { supabase } = await import('../services/dbService').then(m => m.dbService as any);
+
+            const { data, error } = await supabase.functions.invoke('process-checkout', {
+                body: {
+                    companyData: {
+                        name: formData.companyName,
+                        document: formData.document,
+                        email: formData.email,
+                        phone: formData.phone,
+                        address: `${formData.address}${formData.city ? ', ' + formData.city : ''}`,
+                        plan: plan
+                    },
+                    userData: {
+                        name: formData.userName,
+                        adminEmail: formData.adminEmail,
+                        password: formData.password
+                    },
+                    paymentData: {
+                        method: paymentMethod,
+                        cardHolder: formData.cardHolder,
+                        cardNumber: formData.cardNumber ? formData.cardNumber.replace(/\s/g, '') : '',
+                        expiryDate: formData.expiryDate,
+                        brand: 'Visa',
+                        period: period,
+                        amount: currentPrice
+                    }
+                }
+            });
+
+            if (error) {
+                console.error("Erro da Edge Function (Raw):", error);
+
+                // Tentar extrair detalhes do corpo da resposta (se disponível)
+                let errorMsg = error.message;
+                if (error instanceof Error && (error as any).context) {
+                    try {
+                        const body = await (error as any).context.json();
+                        if (body && body.details) errorMsg = `${body.error}: ${body.details}`;
+                        else if (body && body.error) errorMsg = body.error;
+                    } catch (e) {
+                        console.warn("Não foi possível processar o corpo do erro:", e);
+                    }
+                }
+                throw new Error(errorMsg || "Erro desconhecido ao processar.");
+            }
+
             setStep(3);
-        }, 2000);
+        } catch (error: any) {
+            console.error("Erro no checkout:", error);
+            alert("Erro ao processar: " + (error.message || "Verifique os dados e tente novamente."));
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -67,21 +164,51 @@ const CheckoutPage: React.FC = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">Nome da Empresa</label>
-                                            <input type="text" className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="Ex: TechReparo LTDA" />
+                                            <input type="text" name="companyName" value={formData.companyName} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-bold" placeholder="Ex: TechReparo LTDA" />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">CNPJ</label>
-                                            <input type="text" className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="00.000.000/0000-00" />
+                                            <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">CNPJ / CPF</label>
+                                            <input type="text" name="document" value={formData.document} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="000.000.000-00 ou 0.000.000/0000-00" maxLength={18} />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">E-mail Administrativo</label>
-                                            <input type="email" className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="adm@empresa.com" />
+                                            <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all lowercase" placeholder="adm@empresa.com" />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">WhatsApp / Telefone</label>
-                                            <input type="text" className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="(00) 00000-0000" />
+                                            <input type="text" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="(00) 00000-0000" maxLength={15} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">Endereço</label>
+                                            <input type="text" name="address" value={formData.address} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="Rua, Número, Bairro" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">Cidade</label>
+                                            <input type="text" name="city" value={formData.city} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="Ex: São Paulo" />
                                         </div>
                                     </div>
+
+                                    <div className="pt-6 border-t border-white/10 space-y-6">
+                                        <h2 className="text-xl font-bold flex items-center gap-2">
+                                            <i className="fa-solid fa-user-shield text-blue-500" /> Acesso ao Sistema
+                                        </h2>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">Nome Completo (Admin)</label>
+                                                <input type="text" name="userName" value={formData.userName} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="Seu Nome" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">E-mail de Acesso (Login)</label>
+                                                <input type="email" name="adminEmail" required value={formData.adminEmail} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all lowercase" placeholder="Ex: admin@seu-login.com" />
+                                                <p className="text-[10px] text-blue-400 mt-1 italic">* Use este e-mail para entrar no sistema.</p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold uppercase text-slate-500 tracking-widest">Senha de Acesso</label>
+                                                <input type="password" name="password" value={formData.password} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all" placeholder="••••••••" />
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <button onClick={() => setStep(2)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 px-8 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-600/20 transition-all">
                                         Ir para Pagamento <i className="fa-solid fa-arrow-right ml-2" />
                                     </button>
@@ -110,17 +237,27 @@ const CheckoutPage: React.FC = () => {
                                     {paymentMethod === 'CARD' && (
                                         <div className="space-y-4 pt-4 border-t border-white/5">
                                             <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-slate-500 tracking-tighter">Nome no Cartão</label>
+                                                <input type="text" name="cardHolder" value={formData.cardHolder} onChange={handleInputChange} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all uppercase" placeholder="NOME COMO NO CARTÃO" />
+                                            </div>
+                                            <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-slate-500 tracking-tighter">Número do Cartão</label>
-                                                <input type="text" className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="0000 0000 0000 0000" />
+                                                <input type="text" name="cardNumber" value={formData.cardNumber} onChange={(e) => {
+                                                    const v = e.target.value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ');
+                                                    setFormData({ ...formData, cardNumber: v });
+                                                }} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="0000 0000 0000 0000" maxLength={19} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-tighter">Validade</label>
-                                                    <input type="text" className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="MM/AA" />
+                                                    <input type="text" name="expiryDate" value={formData.expiryDate} onChange={(e) => {
+                                                        const v = e.target.value.replace(/\D/g, '').replace(/(\d{2})(?=\d)/g, '$1/');
+                                                        setFormData({ ...formData, expiryDate: v });
+                                                    }} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="MM/AA" maxLength={5} />
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-tighter">CVV</label>
-                                                    <input type="text" className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="123" />
+                                                    <input type="text" name="cvv" value={formData.cvv} onChange={(e) => setFormData({ ...formData, cvv: e.target.value.replace(/\D/g, '') })} className="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-all font-mono" placeholder="123" maxLength={4} />
                                                 </div>
                                             </div>
                                         </div>
