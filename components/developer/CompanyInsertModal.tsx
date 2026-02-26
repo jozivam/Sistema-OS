@@ -79,9 +79,9 @@ const CompanyInsertModal: React.FC<CompanyInsertModalProps> = ({ isOpen, onClose
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Plano</label>
                                 <select className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-black uppercase text-[10px]" value={data.plan} onChange={e => setData({ ...data, plan: e.target.value as CompanyPlan })}>
-                                    <option value={CompanyPlan.MENSAL}>MENSAL</option>
-                                    <option value={CompanyPlan.TRIMESTRAL}>TRIMESTRAL</option>
-                                    <option value={CompanyPlan.ANUAL}>ANUAL</option>
+                                    <option value={CompanyPlan.OURO}>OURO</option>
+                                    <option value={CompanyPlan.DIAMANTE}>DIAMANTE</option>
+                                    <option value={CompanyPlan.CUSTOM}>CUSTOMIZADO</option>
                                     <option value={CompanyPlan.TESTE}>TESTE</option>
                                     <option value={CompanyPlan.LIVRE}>LIVRE</option>
                                 </select>

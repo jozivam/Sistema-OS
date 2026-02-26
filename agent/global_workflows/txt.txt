@@ -1,0 +1,19 @@
+/plan - Planejar uma nova funcionalidade (sem gerar código ainda).
+
+/create - Mão na massa! Criar código com base em um plano ou pedido.
+
+/debug - Investigar e consertar algum erro (bugs/erros no terminal).
+
+/deploy - Preparar a aplicação para ir para produção.
+
+/enhance - Melhorar ou adicionar novidades a um código que já existe.
+
+/orchestrate - Fazer eu coordenar múltiplas tarefas complexas de uma vez.
+
+/test - Gerar ou rodar testes automatizados para garantir que nada quebrou.
+
+/preview - Iniciar o servidor de desenvolvimento para vermos como está ficando.
+
+/status - Fazer um resumo de como está o projeto no momento.
+
+/brainstorm - Bater um papo focado para termos ideias sobre arquitetura ou design.
