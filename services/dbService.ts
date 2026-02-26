@@ -147,6 +147,7 @@ export const dbService: IDatabaseService = {
 
     // Usuários
     async getUsers(companyId?: string): Promise<User[]> {
+        if (companyId === 'trial-company') return [];
         let query = supabase.from('users').select('*');
         if (companyId) query = query.eq('company_id', companyId);
         const { data, error } = await query;
@@ -197,6 +198,10 @@ export const dbService: IDatabaseService = {
 
     // Clientes
     async getCustomers(companyId?: string): Promise<Customer[]> {
+        if (companyId === 'trial-company') {
+            const { getTrialCustomers } = await import('./trialService');
+            return getTrialCustomers();
+        }
         let query = supabase.from('customers').select('*');
         if (companyId) query = query.eq('company_id', companyId);
         const { data, error } = await query;
@@ -246,6 +251,13 @@ export const dbService: IDatabaseService = {
 
     // Ordens de Serviço
     async getOrders(companyId?: string, techId?: string): Promise<ServiceOrder[]> {
+        if (companyId === 'trial-company') {
+            const { getTrialOrders } = await import('./trialService');
+            let orders = getTrialOrders();
+            if (techId) orders = orders.filter((o: any) => o.techId === techId);
+            return orders;
+        }
+
         let query = supabase
             .from('service_orders')
             .select('*, customers(name), users(name)');
@@ -288,6 +300,7 @@ export const dbService: IDatabaseService = {
     },
 
     async updateOrder(id: string, updates: Partial<ServiceOrder>) {
+        if (id.startsWith('trial-')) return; // Ignore on trial mode
         const dbUpdates: any = {};
         if (updates.status) dbUpdates.status = updates.status;
         if (updates.description !== undefined) dbUpdates.description = updates.description;
@@ -312,6 +325,7 @@ export const dbService: IDatabaseService = {
 
     // Chat
     async getMessages(companyId?: string): Promise<ChatMessage[]> {
+        if (companyId === 'trial-company') return [];
         let query = supabase
             .from('chat_messages')
             .select('*');
@@ -334,6 +348,7 @@ export const dbService: IDatabaseService = {
     },
 
     async sendMessage(message: Omit<ChatMessage, 'id' | 'timestamp'>) {
+        if (message.companyId === 'trial-company') return; // Ignore on trial mode
         const { error } = await supabase.from('chat_messages').insert({
             company_id: message.companyId,
             sender_id: message.senderId,
@@ -347,6 +362,7 @@ export const dbService: IDatabaseService = {
 
     // Pagamentos de Empresas
     async getCompanyPayments(companyId?: string): Promise<CompanyPayment[]> {
+        if (companyId === 'trial-company') return [];
         let query = supabase
             .from('company_payments')
             .select('*');
@@ -517,6 +533,7 @@ export const dbService: IDatabaseService = {
 
     // Notificações
     async getNotifications(companyId: string): Promise<AppNotification[]> {
+        if (companyId === 'trial-company') return [];
         const { data, error } = await supabase
             .from('notifications')
             .select('*')
@@ -553,8 +570,38 @@ export const dbService: IDatabaseService = {
         if (error) throw error;
     },
 
+    // Inteligência Artificial
+    async generateAIReport(orderId: string, description: string, history: string): Promise<string> {
+        if (orderId.startsWith('trial-')) {
+            // Mock de inteligência artificial para o trial
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return `## Relatório Técnico Preliminar (Modo Demonstração)
+
+**Situação Encontrada:**
+O cliente relatou o seguinte problema: *${description}*
+
+**Ações Técnicas Realizadas:**
+De acordo com o acompanhamento: *${history}*
+
+**Conclusão:**
+Este é um relatório gerado localmente pelo ambiente de testes (Demonstração). Em produção, este texto seria preenchido pela Inteligência Artificial configurada na plataforma (Google Gemini) com base no Diário de Bordo Técnico.`;
+        }
+
+        const { data, error } = await supabase.functions.invoke('generate-report', {
+            body: { description, history }
+        });
+
+        if (error) {
+            console.error("Erro na Function generate-report", error);
+            throw new Error('Falha ao gerar relatório com Inteligência Artificial.');
+        }
+
+        return data.text || 'Erro de formatação do relatório gerado.';
+    },
+
     // Canais de Suporte (Direct Developer <=> Admin)
     async getSupportMessages(companyId: string): Promise<ChatMessage[]> {
+        if (companyId === 'trial-company') return [];
         const { data, error } = await supabase
             .from('chat_messages')
             .select('*')
@@ -652,6 +699,7 @@ export const dbService: IDatabaseService = {
 
     // === Contagem de Admins ===
     async getAdminCount(companyId: string): Promise<number> {
+        if (companyId === 'trial-company') return 1;
         const { count, error } = await supabase
             .from('users')
             .select('*', { count: 'exact', head: true })
@@ -672,6 +720,7 @@ export const dbService: IDatabaseService = {
     },
 
     async getActiveSessionUsers(companyId?: string): Promise<User[]> {
+        if (companyId === 'trial-company') return [];
         let query = supabase
             .from('users')
             .select('*')

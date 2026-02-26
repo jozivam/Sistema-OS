@@ -24,6 +24,7 @@ const OrderDetails: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingDesc, setIsSavingDesc] = useState(false);
   const [isSavingReport, setIsSavingReport] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   const [attachmentToDelete, setAttachmentToDelete] = useState<string | null>(null);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
@@ -168,6 +169,24 @@ const OrderDetails: React.FC = () => {
     } catch (error) {
       console.error("Erro ao persistir mudanças na OS:", error);
       setToast({ message: 'Erro ao salvar mudanças.', type: 'error' });
+    }
+  };
+
+  const handleGenerateAI = async () => {
+    if (!id || !editedDescription) {
+      setToast({ message: 'A Instrução de Serviço original é obrigatória para a IA.', type: 'error' });
+      return;
+    }
+    setIsGeneratingAI(true);
+    try {
+      const generatedText = await dbService.generateAIReport(id, editedDescription, editedHistory);
+      setEditedAIReport(generatedText);
+      setToast({ message: 'Relatório IA gerado com sucesso! Não esqueça de Salvar.', type: 'success' });
+    } catch (error) {
+      console.error("Erro na geração de IA:", error);
+      setToast({ message: 'Erro ao contactar a Inteligência Artificial.', type: 'error' });
+    } finally {
+      setIsGeneratingAI(false);
     }
   };
 
@@ -730,6 +749,54 @@ const OrderDetails: React.FC = () => {
                   placeholder="Insira os detalhes técnicos da execução. Essas informações servem de base para o histórico da OS..."
                   value={editedHistory}
                   onChange={e => setEditedHistory(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Relatório Analítico de IA - Modernized */}
+          {settings?.enableAI && (isAdmin || isLocked) && (
+            <div className="bg-white/60 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-xl shadow-indigo-500/5 border border-white/40 overflow-hidden relative">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500 shadow-[2px_0_10px_rgba(99,102,241,0.3)]"></div>
+
+              <div className="flex justify-between items-center mb-8 pr-2 flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                  </div>
+                  <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Relatório Analítico de IA</h2>
+                </div>
+                <div className="flex gap-3">
+                  {!isLocked && isAdmin && (
+                    <button
+                      onClick={handleGenerateAI}
+                      disabled={isGeneratingAI || !editedDescription}
+                      className="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isGeneratingAI ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-bolt"></i>}
+                      Gerar com IA
+                    </button>
+                  )}
+                  {!isLocked && isAdmin && (
+                    <button
+                      onClick={() => handleSave('ai')}
+                      disabled={isSavingReport} // reaproveitando loading para save
+                      className="px-6 py-2.5 bg-indigo-50 text-indigo-600 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all border border-indigo-200"
+                    >
+                      {isSavingReport ? <i className="fa-solid fa-spinner fa-spin"></i> : 'Salvar Relatório'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">SINTETIZAÇÃO GEMINI AI</span>
+                <textarea
+                  disabled={isLocked || !isAdmin}
+                  className="w-full p-8 bg-indigo-50/20 border border-white rounded-[2.5rem] outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white text-sm font-medium min-h-[220px] resize-none leading-relaxed shadow-inner text-indigo-950"
+                  placeholder="O relatório gerado pela inteligência artificial aparecerá aqui. Você pode editá-lo manualmente antes de salvar."
+                  value={editedAIReport}
+                  onChange={e => setEditedAIReport(e.target.value)}
                 />
               </div>
             </div>

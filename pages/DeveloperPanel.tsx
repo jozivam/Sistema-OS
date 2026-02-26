@@ -218,7 +218,18 @@ const DeveloperPanel: React.FC = () => {
   const calculateExpirationDate = (plan: CompanyPlan, baseDateStr: string): string | undefined => {
     if (plan === CompanyPlan.LIVRE) return undefined;
 
-    const date = new Date(baseDateStr + 'T12:00:00');
+    let date: Date;
+    if (!baseDateStr) {
+      date = new Date();
+    } else {
+      date = new Date(baseDateStr + 'T12:00:00');
+    }
+
+    // Safety check just in case the date parsed as Invalid Date
+    if (isNaN(date.getTime())) {
+      date = new Date();
+    }
+
     // Default: 1 month for all regular plans
     date.setMonth(date.getMonth() + 1);
     return date.toISOString();
@@ -256,7 +267,7 @@ const DeveloperPanel: React.FC = () => {
         period: newCompanyData.period,
         monthlyFee: newCompanyData.monthlyFee,
         status: newCompanyData.status,
-        expiresAt: expiresAt ? new Date(expiresAt + 'T12:00:00').toISOString() : undefined,
+        expiresAt: expiresAt,
         settings: {
           ...newCompanyData.settings,
           orderTypes: []
