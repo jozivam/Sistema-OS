@@ -31,6 +31,8 @@ export interface IDatabaseService {
     createOrder(order: any): Promise<ServiceOrder>;
     updateOrder(id: string, order: Partial<ServiceOrder>): Promise<void>;
     deleteOrder(id: string): Promise<void>;
+    generateAIReport(orderId: string, description: string, history: string): Promise<string>;
+
 
     // Chat
     getMessages(companyId?: string): Promise<ChatMessage[]>;

@@ -329,37 +329,36 @@ const Customers: React.FC = () => {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Clientes</h1>
-          <p className="text-slate-500 font-medium">Controle de base cadastral e serviços.</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] capitalize tracking-tight">Clientes</h1>
+          <p className="text-[var(--text-secondary)] font-medium text-sm mt-1">Gerencie sua base de clientes e históricos.</p>
         </div>
         <button
           onClick={handleOpenNewModal}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+          className="btn-premium flex items-center justify-center gap-2"
         >
-          <i className="fa-solid fa-user-plus"></i> Novo Cliente
+          <i className="fa-solid fa-plus text-sm"></i> Novo Cliente
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-4">
+      <div className="saas-card overflow-hidden">
+        <div className="p-6 border-b border-[var(--border-color)] bg-white flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
-            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
             <input
               type="text"
-              placeholder="Nome ou telefone..."
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="Buscar por nome ou telefone..."
+              className="w-full pl-11 pr-4 py-2.5 bg-white border border-[var(--border-color)] rounded-full outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm transition-shadow shadow-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-2 min-w-[200px]">
-            <i className="fa-solid fa-filter text-slate-400 text-sm"></i>
+          <div className="hidden md:flex items-center gap-2 min-w-[200px]">
             <select
-              className="flex-1 bg-white border border-slate-200 rounded-lg py-2.5 px-3 outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+              className="w-full px-4 py-2.5 bg-white border border-[var(--border-color)] rounded-full outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm text-[var(--text-primary)] transition-shadow shadow-sm cursor-pointer"
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
             >
-              <option value="">Todas Regiões</option>
+              <option value="">Todas as Regiões</option>
               {uniqueCities.map(city => (
                 <option key={city} value={city}>{city}</option>
               ))}
@@ -370,7 +369,7 @@ const Customers: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-widest font-bold">
+              <tr className="border-b border-[var(--border-color)] text-xs font-semibold text-[var(--text-secondary)]">
                 <th className="px-6 py-4">Cliente</th>
                 <th className="px-6 py-4">Contato</th>
                 <th className="px-6 py-4">Endereço</th>
@@ -378,46 +377,52 @@ const Customers: React.FC = () => {
                 <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[var(--border-color)]">
               {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-16 text-slate-400">
-                    <i className="fa-solid fa-users text-3xl mb-3 block opacity-30"></i>
-                    <p className="text-sm font-semibold">Nenhum cliente encontrado.</p>
+                  <td colSpan={5} className="text-center py-20 text-[var(--text-muted)]">
+                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-[var(--border-color)]">
+                      <i className="fa-solid fa-users text-2xl"></i>
+                    </div>
+                    <p className="text-sm">Nenhum cliente encontrado.</p>
                   </td>
                 </tr>
               ) : (
                 filteredCustomers.map(customer => (
-                  <tr key={customer.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <Link to={`/clientes/${customer.id}`} className="font-bold text-slate-900 group-hover:text-blue-600 hover:underline flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                          <i className="fa-solid fa-user text-xs"></i>
+                  <tr key={customer.id} className="hover:bg-slate-50 transition-colors group bg-white">
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200">
+                          <span className="text-sm font-semibold">{customer.name.charAt(0).toUpperCase()}</span>
                         </div>
-                        {customer.name}
-                      </Link>
+                        <Link to={`/clientes/${customer.id}`} className="font-semibold text-[var(--text-primary)] group-hover:text-[var(--blue-primary)] hover:underline transition-colors">
+                          {customer.name}
+                        </Link>
+                      </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-slate-600 font-bold font-mono tracking-tight">{customer.phone}</span>
+                    <td className="px-6 py-5">
+                      <span className="text-sm text-[var(--text-secondary)]">{customer.phone}</span>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-semibold text-slate-700">{customer.address}</div>
-                      <div className="text-[10px] text-slate-400 font-bold uppercase">{customer.number ? `Nº ${customer.number}` : 'S/N'}</div>
+                    <td className="px-6 py-5">
+                      <div className="text-sm text-[var(--text-primary)]">{customer.address}</div>
+                      <div className="text-xs text-[var(--text-muted)] mt-0.5">{customer.number ? `Nº ${customer.number}` : 'S/N'}</div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-semibold text-slate-700">{customer.city}</div>
-                      <div className="text-[10px] text-slate-400 font-bold uppercase">{customer.sector || 'S/ Bairro'}</div>
+                    <td className="px-6 py-5">
+                      <div className="text-sm text-[var(--text-primary)]">{customer.city}</div>
+                      <div className="text-xs text-[var(--text-muted)] mt-0.5">{customer.sector || 'S/ Bairro'}</div>
                     </td>
-                    <td className="px-6 py-4 text-right space-x-1">
-                      <button onClick={() => handleOpenEditModal(customer)} className="text-slate-400 hover:text-blue-600 p-2 rounded-lg transition-colors inline-block" title="Editar">
-                        <i className="fa-solid fa-pen-to-square"></i>
-                      </button>
-                      <Link to={`/ordens?search=${customer.name}`} className="text-slate-400 hover:text-blue-500 p-2 rounded-lg transition-colors inline-block" title="Ver Histórico">
-                        <i className="fa-solid fa-file-invoice"></i>
-                      </Link>
-                      <button onClick={() => setCustomerToDelete(customer.id)} className="text-slate-400 hover:text-red-500 p-2 rounded-lg transition-colors" title="Remover">
-                        <i className="fa-solid fa-trash-can"></i>
-                      </button>
+                    <td className="px-6 py-5 text-right">
+                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleOpenEditModal(customer)} className="w-8 h-8 rounded hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors" title="Editar">
+                          <i className="fa-solid fa-pen text-xs"></i>
+                        </button>
+                        <Link to={`/ordens?search=${customer.name}`} className="w-8 h-8 rounded hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors" title="Ver Histórico">
+                          <i className="fa-solid fa-list text-xs"></i>
+                        </Link>
+                        <button onClick={() => setCustomerToDelete(customer.id)} className="w-8 h-8 rounded hover:bg-red-50 text-red-500 flex items-center justify-center transition-colors" title="Remover">
+                          <i className="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -429,13 +434,13 @@ const Customers: React.FC = () => {
 
       {/* ── Modal Criar / Editar Cliente ─────────────────────────────────────── */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in duration-200">
-            <div className="px-8 py-5 border-b flex justify-between items-center bg-slate-50 sticky top-0 z-10">
-              <h3 className="text-xl font-bold text-slate-900">
+        <div className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-md z-[100] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in duration-200">
+            <div className="px-8 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-main)] sticky top-0 z-10">
+              <h3 className="text-xl font-black text-[var(--text-primary)] uppercase tracking-tighter">
                 {editingCustomer ? 'Alterar Cadastro' : 'Novo Cliente'}
               </h3>
-              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 transition-transform hover:rotate-90">
+              <button onClick={() => setModalOpen(false)} className="text-[var(--text-secondary)] hover:text-slate-800 p-2 transition-transform w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200/50">
                 <i className="fa-solid fa-xmark text-xl"></i>
               </button>
             </div>
@@ -561,13 +566,13 @@ const Customers: React.FC = () => {
                 </div>
               )}
 
-              <div className="pt-4 flex gap-4 sticky bottom-0 bg-white">
-                <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-4 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors">
+              <div className="pt-4 flex gap-4 sticky bottom-0 bg-white m-0 p-8 border-t border-[var(--border-color)]">
+                <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-4 border border-[var(--border-color)] rounded-2xl font-black text-xs uppercase tracking-widest text-[var(--text-secondary)] hover:bg-[var(--bg-main)] transition-colors">
                   Descartar
                 </button>
-                <button type="submit" disabled={loading} className="flex-2 py-4 bg-blue-600 text-white rounded-xl font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 px-8">
+                <button type="submit" disabled={loading} className="flex-[2] py-4 bg-[var(--blue-primary)] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-[var(--blue-hover)] btn-pill-hover flex items-center justify-center gap-2 disabled:opacity-50 px-8">
                   {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
-                  {editingCustomer ? 'Salvar Alterações' : (openOSNow ? 'Criar Cliente e Agendar OS' : 'Confirmar Cadastro')}
+                  {editingCustomer ? 'Salvar Alterações' : (openOSNow ? 'Criar e Agendar OS' : 'Confirmar Cadastro')}
                 </button>
               </div>
             </form>

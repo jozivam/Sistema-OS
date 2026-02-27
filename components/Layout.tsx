@@ -206,7 +206,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-main)]">
 
       {/* ─── Trial Banner ─── */}
       {isTrial && (
@@ -241,62 +241,86 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
         {/* Sidebar */}
         <aside className={`
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
-        md:translate-x-0 fixed md:static inset-y-0 left-0 z-50 w-64 bg-[#0F172A] text-slate-400 transition-transform duration-300 flex flex-col shadow-2xl shrink-0
+        md:translate-x-0 fixed md:static inset-y-0 left-0 z-50 w=[280px] lg:w-72 bg-white text-[var(--text-primary)] transition-transform duration-300 flex flex-col shrink-0 border-r border-[var(--border-color)] shadow-sm
       `}>
-          <div className="p-6 md:p-8 hidden md:block">
-            <h1 className="text-xl font-black text-white flex items-center gap-3 tracking-tighter uppercase px-2">
-              <i className="fa-solid fa-microchip text-blue-500"></i>
-              <span className="truncate">{isDev ? 'OsRepo' : (company?.tradeName || company?.name || 'Sistema OS')}</span>
+          <div className="p-8 hidden md:block border-b border-[var(--border-color)]">
+            <h1 className="text-2xl font-black text-[var(--text-primary)] flex items-center gap-3 tracking-tighter">
+              <div className="w-10 h-10 rounded-2xl bg-[var(--blue-primary)] flex items-center justify-center text-white shadow-sm shadow-blue-500/20">
+                <i className="fa-solid fa-layer-group text-lg"></i>
+              </div>
+              <span className="truncate tracking-tight">{isDev ? 'OsRepo' : (company?.tradeName || company?.name || 'Sistema OS')}</span>
             </h1>
           </div>
 
-          <nav className="flex-1 px-4 mt-4 space-y-1 overflow-y-auto custom-scrollbar">
+          <div className="px-6 py-4">
+            <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-2 ml-2">Menu Principal</p>
+          </div>
+
+          <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
             {navItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-semibold text-[11px] uppercase tracking-wider group ${isActive(item.path) ? 'sidebar-link-active bg-blue-600/10 text-white' : 'hover:bg-slate-800/50 hover:text-white'}`}
+                className={`flex items-center gap-4 px-5 py-3.5 rounded-xl transition-colors font-medium text-sm group relative
+                  ${isActive(item.path)
+                    ? 'sidebar-link-active'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-slate-50'
+                  }
+                `}
               >
-                <i className={`fa-solid ${item.icon} w-5 text-center text-sm ${isActive(item.path) ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}></i>
-                <span className="truncate">{item.label}</span>
+                <div className={`w-6 h-6 flex items-center justify-center transition-colors
+                   ${isActive(item.path) ? 'text-[var(--blue-primary)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'}
+                `}>
+                  <i className={`fa-solid ${item.icon} text-[16px]`}></i>
+                </div>
+                <span className="truncate tracking-tight">{item.label}</span>
               </Link>
             ))}
 
             {/* Role Switcher — apenas no trial */}
           </nav>
 
-          <div className="p-4 mt-auto">
-            <div className="px-4 py-4 bg-slate-800/20 rounded-2xl border border-slate-700/30 mb-2">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 block mb-2">SISTEMA ATIVO</span>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-[10px]">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-white font-bold text-[11px] truncate">{user.name}</p>
-                  <p className="text-[9px] text-slate-500 truncate">{user.role}</p>
-                </div>
+          <div className="p-6 mt-auto border-t border-[var(--border-color)]">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[var(--blue-primary)] to-blue-400 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[var(--text-primary)] font-bold text-sm truncate">{user.name}</p>
+                <p className="text-xs text-[var(--text-secondary)] font-medium truncate">{user.role}</p>
               </div>
             </div>
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:text-red-400 font-semibold text-[11px] uppercase tracking-wider hover:bg-red-500/5 transition-all group">
-              <i className="fa-solid fa-right-from-bracket group-hover:translate-x-1 transition-transform"></i>
-              <span>Sair</span>
+
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 font-semibold text-sm transition-all group border border-transparent hover:border-red-100">
+              <i className="fa-solid fa-right-from-bracket group-hover:-translate-x-1 transition-transform"></i>
+              <span>Deslogar</span>
             </button>
           </div>
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden mt-[72px] md:mt-0">
-          {/* Top Header / Breadcrumb */}
-          <header className="hidden md:flex h-20 bg-white border-b border-slate-200 px-8 items-center justify-between shrink-0">
-            <div className="flex items-center gap-3 text-slate-400 text-sm font-medium">
-              <Link to="/dashboard" className="hover:text-blue-600 transition-colors">Painel</Link>
-              <i className="fa-solid fa-chevron-right text-[10px] opacity-50"></i>
-              <span className="text-slate-900 font-bold">{location.pathname.split('/')[1]?.charAt(0).toUpperCase() + location.pathname.split('/')[1]?.slice(1) || 'Painel'}</span>
+        <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden mt-[72px] md:mt-0 bg-[var(--bg-main)]">
+          {/* Top Header / Breadcrumb - Structural Clean */}
+          <header className="hidden md:flex h-20 px-8 items-center justify-between shrink-0 bg-[var(--bg-main)] border-b border-[var(--border-color)]/50">
+            <div className="flex-1 flex items-center gap-4">
+              <h2 className="text-xl font-bold text-[var(--text-primary)] capitalize tracking-tight">
+                {location.pathname.split('/')[1]?.replace('-', ' ') || 'Dashboard'}
+              </h2>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex-1 max-w-lg px-8 hidden lg:block">
+              <div className="relative">
+                <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
+                <input
+                  type="text"
+                  placeholder="Pesquisar em todo o sistema..."
+                  className="w-full bg-white border border-[var(--border-color)] rounded-full py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-[var(--text-primary)] shadow-sm transition-shadow"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 flex items-center justify-end gap-5">
               <div className="relative">
                 <button
                   onClick={() => setShowNotifications(!showNotifications)}
@@ -384,14 +408,15 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-900 leading-none mb-1">{user.name}</p>
-                  <p className="text-[10px] text-slate-500 font-medium">{user.role}</p>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-black border border-slate-200">
+              <div className="flex items-center gap-3 pl-5 border-l border-[var(--border-color)] cursor-pointer hover:opacity-80 transition-opacity">
+                <div className="w-9 h-9 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-600 font-bold text-sm overflow-hidden shadow-sm">
                   {user.name.charAt(0).toUpperCase()}
                 </div>
+                <div className="hidden xl:block">
+                  <p className="text-sm font-bold text-[var(--text-primary)] leading-tight">{user.name.split(' ')[0]}</p>
+                  <p className="text-[10px] font-medium text-[var(--text-secondary)] uppercase tracking-wider">{user.role}</p>
+                </div>
+                <i className="fa-solid fa-chevron-down text-xs text-[var(--text-muted)] ml-1"></i>
               </div>
             </div>
           </header>

@@ -215,23 +215,23 @@ const Users: React.FC = () => {
       )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Usuários</h1>
-          <p className="text-slate-500">Gerencie técnicos e administradores do sistema.</p>
+          <h1 className="text-3xl font-black text-[var(--text-primary)] uppercase tracking-tighter">Usuários</h1>
+          <p className="text-[var(--text-secondary)] font-bold text-xs mt-1">Gerencie técnicos e administradores do sistema.</p>
         </div>
         <button
           onClick={() => openModal()}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all"
+          className="bg-[var(--blue-primary)] hover:bg-[var(--blue-hover)] text-white px-8 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 btn-pill-hover flex items-center justify-center gap-2"
         >
           <i className="fa-solid fa-plus"></i> Novo Usuário
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
+      <div className="saas-card overflow-hidden">
+        <div className="p-5 border-b border-[var(--border-color)] bg-white/50 flex flex-col md:flex-row gap-4">
           <div className="flex items-center gap-2 min-w-[200px]">
-            <i className="fa-solid fa-map-location-dot text-slate-400"></i>
+            <i className="fa-solid fa-map-location-dot text-[var(--text-secondary)] text-sm"></i>
             <select
-              className="flex-1 bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+              className="flex-1 px-4 py-3 bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm font-semibold text-[var(--text-primary)] transition-colors"
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
             >
@@ -257,27 +257,27 @@ const Users: React.FC = () => {
               {filteredUsers.map(user => (
                 <tr key={user.id} className={`hover:bg-slate-50 transition-colors group ${user.isBlocked ? 'opacity-60 bg-slate-50' : ''}`}>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 font-bold text-slate-800">
+                    <div className="flex items-center gap-2 font-bold text-[var(--text-primary)]">
                       <i className={`fa-solid fa-circle-user ${user.isBlocked ? 'text-red-300' : 'text-slate-300'}`}></i>
-                      <span className={user.isBlocked ? 'line-through text-slate-400' : 'text-blue-600'}>{user.name}</span>
+                      <span className={user.isBlocked ? 'line-through text-slate-400' : 'text-[var(--blue-primary)]'}>{user.name}</span>
                     </div>
-                    <div className="ml-8">
-                      <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold uppercase">
+                    <div className="ml-8 mt-1">
+                      <span className="text-[10px] bg-[var(--bg-main)] border border-[var(--border-color)] text-[var(--text-secondary)] px-2.5 py-1 rounded-lg font-black uppercase tracking-widest">
                         {user.city || 'Sem Região'}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-slate-600 text-sm">{user.email}</div>
-                    <div className="text-slate-400 text-xs font-medium">{user.phone || 'Sem telefone'}</div>
+                    <div className="text-[var(--text-primary)] text-sm font-bold tracking-tight">{user.email}</div>
+                    <div className="text-[var(--text-secondary)] text-xs font-semibold">{user.phone || 'Sem telefone'}</div>
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'
+                    <span className={`text-[9px] px-2.5 py-1 rounded-lg font-black uppercase tracking-widest ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-[var(--text-secondary)]'
                       }`}>
                       {user.role}
                     </span>
                     {user.isBlocked && (
-                      <div className="text-[8px] font-black text-red-500 uppercase mt-1">Bloqueado</div>
+                      <div className="text-[8px] font-black text-red-500 uppercase mt-1 tracking-widest">Bloqueado</div>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -323,13 +323,13 @@ const Users: React.FC = () => {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b flex justify-between items-center bg-slate-50">
-              <h3 className="text-xl font-bold text-slate-900">
+        <div className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="px-8 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-main)]">
+              <h3 className="text-xl font-black text-[var(--text-primary)] uppercase tracking-tighter">
                 {editingUserId ? 'Editar Usuário' : 'Novo Usuário'}
               </h3>
-              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setModalOpen(false)} className="text-[var(--text-secondary)] hover:text-slate-800 p-2 transition-transform w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200/50">
                 <i className="fa-solid fa-xmark text-xl"></i>
               </button>
             </div>
@@ -416,17 +416,17 @@ const Users: React.FC = () => {
                 <label htmlFor="userBlocked" className="text-sm font-bold text-slate-700 select-none">Bloquear acesso deste usuário (Férias/Afastamento)</label>
               </div>
 
-              <div className="pt-4 flex gap-3">
+              <div className="pt-4 flex gap-4 sticky bottom-0 bg-white m-0 p-8 border-t border-[var(--border-color)]">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="flex-1 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                  className="flex-1 py-4 border border-[var(--border-color)] rounded-2xl font-black text-xs uppercase tracking-widest text-[var(--text-secondary)] hover:bg-[var(--bg-main)] transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all"
+                  className="flex-[2] py-4 bg-[var(--blue-primary)] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-[var(--blue-hover)] btn-pill-hover flex items-center justify-center gap-2"
                 >
                   {editingUserId ? 'Salvar Alterações' : 'Cadastrar Usuário'}
                 </button>

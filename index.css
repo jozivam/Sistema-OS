@@ -1,81 +1,169 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
-:root {
-  --bg-main: #F8FAFC;
-  --bg-card: #FFFFFF;
-  --blue-primary: #2563EB;
-  --blue-hover: #1E40AF;
-  --text-primary: #0F172A;
-  --text-secondary: #64748B;
-  --border-color: #E2E8F0;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.04);
-  --sidebar-bg: #0F172A;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Tema Base Claro e Profissional */
+    --bg-main: #F1F5F9;
+    /* Slate 100 - fundo suave e sólido */
+    --bg-card: #FFFFFF;
+    /* Branco puro */
+
+    /* Efeitos Estruturais */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+    /* Sombra quase imperceptível */
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    --border-radius-card: 24px;
+
+    /* Cores de Texto e Interação */
+    --text-primary: #1F2937;
+    /* Gray 800 */
+    --text-secondary: #6B7280;
+    /* Gray 500 */
+    --text-muted: #9CA3AF;
+    /* Gray 400 */
+    --blue-primary: #2563EB;
+    /* Blue 600 - profissional e confiável */
+    --blue-hover: #1D4ED8;
+    /* Blue 700 */
+    --border-color: #E5E7EB;
+    /* Gray 200 - borda sólida fina */
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
 }
 
-body {
-  background-color: var(--bg-main);
-  color: var(--text-primary);
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Saas Card Estrutural */
+  .saas-card {
+    background-color: var(--bg-card);
+    border-radius: var(--border-radius-card);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease;
+  }
+
+  /* Painel Limpo (Substitui o glass-panel) */
+  .clean-panel {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+  }
+
+  /* Botão Premium Arredondado (Pílula) */
+  .btn-premium {
+    background-color: var(--blue-primary);
+    color: white;
+    border-radius: 9999px;
+    /* Pílula completa */
+    font-weight: 600;
+    transition: all 0.2s ease;
+    padding: 0.75rem 1.5rem;
+  }
+
+  .btn-premium:hover {
+    background-color: var(--blue-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Link Ativo na Sidebar */
+  .sidebar-link-active {
+    background-color: #EFF6FF;
+    /* Fundo pastel azul suave */
+    color: var(--blue-primary);
+    font-weight: 600;
+    position: relative;
+    border-radius: 0.75rem;
+    /* rounded-xl */
+  }
+
+  .sidebar-link-active::before {
+    content: '';
+    position: absolute;
+    left: -1.25rem;
+    /* Ajustável dependendo do padding do container do link */
+    top: 50%;
+    transform: translateY(-50%);
+    height: 60%;
+    width: 3px;
+    background-color: var(--blue-primary);
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* Efeitos de Hover padronizado */
+  .btn-pill-hover {
+    border-radius: 9999px;
+    transition: all 0.2s ease;
+  }
+
+  .btn-pill-hover:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
 }
 
 /* Typography Hierarchy */
-h1 { font-size: 28px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.025em; }
-h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.025em; }
-h3 { font-size: 16px; font-weight: 600; color: var(--text-primary); }
-p, span, div { font-size: 14px; font-weight: 400; }
-
-/* Modern SaaS Cards */
-.saas-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-md);
-  border-radius: 16px;
-  transition: all 0.2s ease;
+h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.025em;
 }
 
-.saas-card:hover {
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
 
-/* Sidebar Active Indicator */
-.sidebar-link-active {
-  color: #FFFFFF !important;
-  position: relative;
+h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.sidebar-link-active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 15%;
-  height: 70%;
-  width: 4px;
-  background-color: var(--blue-primary);
-  border-radius: 0 4px 4px 0;
+p,
+span,
+div {
+  font-size: 14px;
 }
 
-/* Micro-animations */
-.transition-standard {
-  transition: all 0.2s ease;
-}
-
-.hover-lift:hover {
-  transform: translateY(-2px);
-}
-
-/* Custom Scrollbar */
+/* Custom Scrollbar Minimalista */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #E2E8F0;
+  background: rgba(156, 163, 175, 0.4);
+  /* Gray 400 */
   border-radius: 10px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #CBD5E1;
+  background: rgba(107, 114, 128, 0.6);
+  /* Gray 500 */
 }
