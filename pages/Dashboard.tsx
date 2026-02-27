@@ -5,6 +5,7 @@ import { authService } from '../services/authService';
 import { isTrialUser, getTrialOrders, getTrialCustomers } from '../services/trialService';
 import { OrderStatus, UserRole, ServiceOrder, Customer, User } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
+import ConfirmModal from '../components/ConfirmModal';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [visibleUpcomingCount, setVisibleUpcomingCount] = useState(5);
   const [visibleCompletedCount, setVisibleCompletedCount] = useState(5);
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -51,6 +53,26 @@ const Dashboard: React.FC = () => {
 
     loadData();
   }, []);
+
+  const handleDeleteOrder = async () => {
+    if (!orderToDelete) return;
+
+    try {
+      if (isTrialUser(currentUser)) {
+        const { saveTrialOrders, getTrialOrders } = await import('../services/trialService');
+        const trialOrders = getTrialOrders().filter((o: any) => o.id !== orderToDelete);
+        saveTrialOrders(trialOrders);
+        setOrders(trialOrders);
+      } else {
+        await dbService.deleteOrder(orderToDelete);
+        setOrders(prev => prev.filter(o => o.id !== orderToDelete));
+      }
+      setOrderToDelete(null);
+    } catch (error) {
+      console.error("Erro ao excluir ordem:", error);
+      alert("Erro ao excluir ordem de serviço.");
+    }
+  };
 
   if (loading) {
     return (
@@ -160,17 +182,16 @@ const Dashboard: React.FC = () => {
                   <th className="px-8 py-5">Nome da Tarefa / Cliente</th>
                   <th className="px-8 py-5">Responsável</th>
                   <th className="px-8 py-5">Localidade</th>
-                  <th className="px-8 py-5">Prioridade</th>
                   <th className="px-8 py-5">Tipo</th>
                   <th className="px-8 py-5">Data Agendada</th>
                   <th className="px-8 py-5">Status</th>
-                  <th className="px-8 py-5 text-center">Ação</th>
+                  <th className="px-8 py-5 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-color)]">
                 {upcomingOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-20 bg-slate-50/30">
+                    <td colSpan={7} className="text-center py-20 bg-slate-50/30">
                       <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 text-slate-200 text-2xl">
                         <i className="fa-solid fa-calendar-xmark"></i>
                       </div>
@@ -202,9 +223,6 @@ const Dashboard: React.FC = () => {
                           <div className="text-xs text-[var(--text-muted)] mt-0.5">{cust?.sector || 'S/ Bairro'}</div>
                         </td>
                         <td className="px-8 py-5">
-                          <span className="text-[10px] px-3 py-1.5 rounded bg-red-50 text-red-500 font-bold uppercase tracking-widest border border-red-100/50">Alta</span>
-                        </td>
-                        <td className="px-8 py-5">
                           <span className="text-[10px] px-3 py-1.5 rounded bg-slate-50 text-slate-600 font-bold uppercase tracking-widest border border-slate-200/50">{order.type}</span>
                         </td>
                         <td className="px-8 py-5 text-sm text-[var(--text-secondary)] font-medium">
@@ -219,10 +237,32 @@ const Dashboard: React.FC = () => {
                             {order.status}
                           </span>
                         </td>
-                        <td className="px-8 py-5 text-center">
-                          <Link to={`/ordens/${order.id}`} className="text-slate-300 hover:text-[var(--text-primary)] transition-colors text-lg">
-                            <i className="fa-solid fa-ellipsis"></i>
-                          </Link>
+                        <td className="px-8 py-5 font-medium">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigate(`/ordens/${order.id}`); }}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                              title="Abrir"
+                            >
+                              <i className="fa-solid fa-eye text-sm"></i>
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigate(`/ordens/${order.id}`); }}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-all"
+                              title="Editar"
+                            >
+                              <i className="fa-solid fa-pen-to-square text-sm"></i>
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setOrderToDelete(order.id); }}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                                title="Excluir"
+                              >
+                                <i className="fa-solid fa-trash-can text-sm"></i>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -316,6 +356,16 @@ const Dashboard: React.FC = () => {
         )}
 
       </div>
+
+      <ConfirmModal
+        isOpen={!!orderToDelete}
+        title="Excluir Ordem de Serviço"
+        message="Tem certeza que deseja excluir esta OS? Esta ação não poderá ser desfeita."
+        onConfirm={handleDeleteOrder}
+        onCancel={() => setOrderToDelete(null)}
+        confirmText="Excluir Agora"
+        variant="danger"
+      />
     </div>
   );
 };

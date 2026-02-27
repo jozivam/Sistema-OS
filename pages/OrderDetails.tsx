@@ -10,6 +10,48 @@ import {
 import { OrderStatus, ServiceOrder, UserRole, OrderPost, OrderAttachment, User, Company } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
 
+const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div className="flex border-b border-slate-100 last:border-0">
+    <div className="w-44 shrink-0 bg-slate-50 border-r border-slate-100 px-5 py-4 text-sm text-slate-500 flex items-start">
+      {label}
+    </div>
+    <div className="flex-1 px-5 py-4 text-sm text-slate-800">
+      {children}
+    </div>
+  </div>
+);
+
+const OptimizedTextarea = ({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  className
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}) => {
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  return (
+    <textarea
+      disabled={disabled}
+      className={className}
+      placeholder={placeholder}
+      value={localValue}
+      onChange={e => setLocalValue(e.target.value)}
+      onBlur={() => onChange(localValue)}
+    />
+  );
+};
+
 const OrderDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -193,7 +235,8 @@ const OrderDetails: React.FC = () => {
   };
 
   const handleSave = async (type: 'all' | 'desc' | 'report' | 'ai' | 'none' = 'all') => {
-    if (isLocked) return;
+    // Se estiver bloqueado e tentando salvar alterações (não status), retorna
+    if (isLocked && type !== 'none') return;
 
     if (type === 'desc') setIsSavingDesc(true);
     else if (type === 'report') setIsSavingReport(true);
@@ -284,20 +327,21 @@ const OrderDetails: React.FC = () => {
     }
 
     try {
-      setIsSaving(true);
+      const reportText = `[RELATÓRIO DE FINALIZAÇÃO - ${new Date().toLocaleDateString('pt-BR')}]:\n${finishReport}`;
       const updatedOrder: ServiceOrder = {
         ...order!,
         status: OrderStatus.FINISHED,
         finishedAt: new Date().toISOString(),
         dailyHistory: (order!.dailyHistory || '') +
           (order!.dailyHistory ? '\n\n' : '') +
-          `[RELATÃ“RIO DE FINALIZAÃ‡ÃƒO - ${new Date().toLocaleDateString('pt-BR')}]:\n${finishReport}`
+          reportText
       };
 
       await persistChanges(updatedOrder);
+      setEditedHistory(updatedOrder.dailyHistory || ''); // Sincroniza o campo de texto na tela
       setIsFinishModalOpen(false);
       setFinishReport('');
-      setToast({ message: 'Ordem de serviÃ§o finalizada com sucesso!', type: 'success' });
+      setToast({ message: 'Ordem de serviço finalizada com sucesso!', type: 'success' });
     } catch (error) {
       console.error("Erro ao finalizar OS:", error);
       setToast({ message: 'Erro ao finalizar serviÃ§o.', type: 'error' });
@@ -476,151 +520,136 @@ const OrderDetails: React.FC = () => {
 
         {/* ════ COLUNA ESQUERDA — Tabela de Detalhes ════ */}
         <div className="order-2 lg:order-1 lg:col-span-8 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          {/* Número da OS */}
+          <Row label="Número da OS">
+            <span className="font-semibold text-blue-600">#{order.id.slice(-4)}</span>
+          </Row>
 
-          {/* Linha helper */}
-          {(() => {
-            const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-              <div className="flex border-b border-slate-100 last:border-0">
-                <div className="w-44 shrink-0 bg-slate-50 border-r border-slate-100 px-5 py-4 text-sm text-slate-500 flex items-start">
-                  {label}
-                </div>
-                <div className="flex-1 px-5 py-4 text-sm text-slate-800">
-                  {children}
-                </div>
+          {/* Cliente */}
+          <Row label="Cliente">
+            {customer ? (
+              <div className="flex items-center gap-2">
+                <i className="fa-regular fa-user text-blue-500 text-xs"></i>
+                <span className="font-semibold text-blue-600">{customer.name}</span>
               </div>
-            );
+            ) : <span className="text-slate-400 italic text-xs">Não informado</span>}
+          </Row>
 
-            return (
-              <>
-                {/* Número da OS */}
-                <Row label="Número da OS">
-                  <span className="font-semibold text-blue-600">#{order.id.slice(-4)}</span>
-                </Row>
+          {/* Contato */}
+          <Row label="Contato">
+            {customer ? (
+              <div className="flex items-center gap-2">
+                <i className="fa-solid fa-phone text-slate-400 text-xs"></i>
+                <span className="text-slate-600">{customer.phone}</span>
+              </div>
+            ) : <span className="text-slate-400 italic text-xs">Sem contato</span>}
+          </Row>
 
-                {/* Contato */}
-                <Row label="Contato">
-                  {customer ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <i className="fa-regular fa-user text-blue-500 text-xs"></i>
-                        <span className="font-semibold text-blue-600">{customer.name}</span>
+          {/* Localização */}
+          <Row label="Localização">
+            {customer ? (
+              <div className="space-y-0.5">
+                {customer.address && <p className="text-slate-700">{customer.address}{customer.number ? `, ${customer.number}` : ''}</p>}
+                {customer.city && <p className="text-slate-500 text-xs">{customer.city}</p>}
+                {!customer.address && !customer.city && <span className="text-slate-400 italic text-xs">Não informado</span>}
+              </div>
+            ) : <span className="text-slate-400 italic text-xs">—</span>}
+          </Row>
+
+          {/* Tipo de Serviço */}
+          <Row label="Tipo de Serviço">
+            <select
+              disabled={isLocked || !isAdmin}
+              className="bg-transparent border-0 outline-none text-slate-800 text-sm w-full max-w-xs cursor-pointer disabled:cursor-default"
+              value={editedType}
+              onChange={e => setEditedType(e.target.value)}
+            >
+              <option value="">Selecione...</option>
+              {settings?.orderTypes?.map((t: string) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Row>
+
+          {/* Técnico Responsável */}
+          {isAdmin && (
+            <Row label="Responsável">
+              <select
+                disabled={isLocked}
+                className="bg-transparent border-0 outline-none text-slate-800 text-sm w-full max-w-xs cursor-pointer disabled:cursor-default"
+                value={editedTechId}
+                onChange={e => setEditedTechId(e.target.value)}
+              >
+                <option value="">Nenhum atribuído</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </Row>
+          )}
+
+          {/* Prazo */}
+          <Row label="Prazo">
+            <input
+              type="datetime-local"
+              disabled={isLocked || !isAdmin}
+              className="bg-transparent border-0 outline-none text-slate-800 text-sm"
+              value={editedScheduledDate}
+              onChange={e => setEditedScheduledDate(e.target.value)}
+            />
+          </Row>
+
+          {/* Instruções */}
+          <Row label="Instruções">
+            <OptimizedTextarea
+              disabled={isLocked}
+              className="w-full bg-transparent border-0 outline-none text-slate-700 text-sm resize-none min-h-[100px] leading-relaxed"
+              placeholder="Descreva o problema ou solicitação original..."
+              value={editedDescription}
+              onChange={setEditedDescription}
+            />
+          </Row>
+
+          {/* Anexos */}
+          {settings?.enableAttachments && (
+            <Row label="Anexos">
+              <div className="flex flex-wrap gap-2 items-center">
+                {order.attachments?.map((att: OrderAttachment) => (
+                  <div key={att.id} className="relative group w-14 h-14 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shadow-sm">
+                    {att.mimeType.startsWith('image/') ? (
+                      <img src={att.data} className="w-full h-full object-cover" alt={att.name} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <i className={`fa-solid ${getFileIcon(att.mimeType)} text-lg text-slate-400`}></i>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <i className="fa-solid fa-phone text-slate-400 text-xs"></i>
-                        <span className="text-slate-600">{customer.phone}</span>
-                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-slate-900/70 flex gap-1 justify-center items-center opacity-0 group-hover:opacity-100 transition-all">
+                      <a href={att.data} download={att.name} className="w-5 h-5 bg-white rounded flex items-center justify-center text-blue-600"><i className="fa-solid fa-download text-[9px]"></i></a>
+                      {!isLocked && <button onClick={() => handleDeleteAttachment(att.id)} className="w-5 h-5 bg-white rounded flex items-center justify-center text-rose-500"><i className="fa-solid fa-trash text-[9px]"></i></button>}
                     </div>
-                  ) : <span className="text-slate-400 italic text-xs">Sem contato</span>}
-                </Row>
-
-                {/* Localização */}
-                <Row label="Localização">
-                  {customer ? (
-                    <div className="space-y-0.5">
-                      {customer.address && <p className="text-slate-700">{customer.address}{customer.number ? `, ${customer.number}` : ''}</p>}
-                      {customer.city && <p className="text-slate-500 text-xs">{customer.city}</p>}
-                      {!customer.address && !customer.city && <span className="text-slate-400 italic text-xs">Não informado</span>}
-                    </div>
-                  ) : <span className="text-slate-400 italic text-xs">—</span>}
-                </Row>
-
-                {/* Tipo de Serviço */}
-                <Row label="Tipo de Serviço">
-                  <select
-                    disabled={isLocked || !isAdmin}
-                    className="bg-transparent border-0 outline-none text-slate-800 text-sm w-full max-w-xs cursor-pointer disabled:cursor-default"
-                    value={editedType}
-                    onChange={e => setEditedType(e.target.value)}
-                  >
-                    <option value="">Selecione...</option>
-                    {settings?.orderTypes?.map((t: string) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Row>
-
-                {/* Técnico Responsável */}
-                {isAdmin && (
-                  <Row label="Responsável">
-                    <select
-                      disabled={isLocked}
-                      className="bg-transparent border-0 outline-none text-slate-800 text-sm w-full max-w-xs cursor-pointer disabled:cursor-default"
-                      value={editedTechId}
-                      onChange={e => setEditedTechId(e.target.value)}
-                    >
-                      <option value="">Nenhum atribuído</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  </Row>
+                  </div>
+                ))}
+                {(order.attachments || []).length === 0 && <span className="text-xs text-slate-400 italic">Nenhum arquivo</span>}
+                {!isLocked && (
+                  <>
+                    <input type="file" ref={fileInputRef} multiple className="hidden" onChange={handleFileUpload} />
+                    <button onClick={() => fileInputRef.current?.click()} className="w-9 h-9 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-300 transition-colors">
+                      {isUploading ? <i className="fa-solid fa-spinner fa-spin text-xs"></i> : <i className="fa-solid fa-plus text-xs"></i>}
+                    </button>
+                  </>
                 )}
+              </div>
+            </Row>
+          )}
 
-                {/* Prazo */}
-                <Row label="Prazo">
-                  <input
-                    type="datetime-local"
-                    disabled={isLocked || !isAdmin}
-                    className="bg-transparent border-0 outline-none text-slate-800 text-sm"
-                    value={editedScheduledDate}
-                    onChange={e => setEditedScheduledDate(e.target.value)}
-                  />
-                </Row>
-
-                {/* Instruções */}
-                <Row label="Instruções">
-                  <textarea
-                    disabled={isLocked}
-                    className="w-full bg-transparent border-0 outline-none text-slate-700 text-sm resize-none min-h-[100px] leading-relaxed"
-                    placeholder="Descreva o problema ou solicitação original..."
-                    value={editedDescription}
-                    onChange={e => setEditedDescription(e.target.value)}
-                  />
-                </Row>
-
-                {/* Anexos */}
-                {settings?.enableAttachments && (
-                  <Row label="Anexos">
-                    <div className="flex flex-wrap gap-2 items-center">
-                      {attachments.map((att: OrderAttachment) => (
-                        <div key={att.id} className="relative group w-14 h-14 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shadow-sm">
-                          {att.mimeType.startsWith('image/') ? (
-                            <img src={att.data} className="w-full h-full object-cover" alt={att.name} />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <i className={`fa-solid ${getFileIcon(att.mimeType)} text-lg text-slate-400`}></i>
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-slate-900/70 flex gap-1 justify-center items-center opacity-0 group-hover:opacity-100 transition-all">
-                            <a href={att.data} download={att.name} className="w-5 h-5 bg-white rounded flex items-center justify-center text-blue-600"><i className="fa-solid fa-download text-[9px]"></i></a>
-                            {!isLocked && <button onClick={() => handleDeleteAttachment(att.id)} className="w-5 h-5 bg-white rounded flex items-center justify-center text-rose-500"><i className="fa-solid fa-trash text-[9px]"></i></button>}
-                          </div>
-                        </div>
-                      ))}
-                      {attachments.length === 0 && <span className="text-xs text-slate-400 italic">Nenhum arquivo</span>}
-                      {!isLocked && (
-                        <>
-                          <input type="file" ref={fileInputRef} multiple className="hidden" onChange={handleFileUpload} />
-                          <button onClick={() => fileInputRef.current?.click()} className="w-9 h-9 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-300 transition-colors">
-                            {isUploading ? <i className="fa-solid fa-spinner fa-spin text-xs"></i> : <i className="fa-solid fa-plus text-xs"></i>}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </Row>
-                )}
-
-                {/* Relatório de Serviço */}
-                {(isAdmin || isLocked) && (
-                  <Row label="Relatório">
-                    <textarea
-                      disabled={isLocked || !isAdmin}
-                      className="w-full bg-transparent border-0 outline-none text-slate-700 text-sm resize-none min-h-[100px] leading-relaxed"
-                      placeholder="Detalhes técnicos da execução..."
-                      value={editedHistory}
-                      onChange={e => setEditedHistory(e.target.value)}
-                    />
-                  </Row>
-                )}
-              </>
-            );
-          })()}
+          {/* Relatório de Serviço */}
+          {(isAdmin || isLocked) && (
+            <Row label="Relatório">
+              <OptimizedTextarea
+                disabled={isLocked || !isAdmin}
+                className="w-full bg-transparent border-0 outline-none text-slate-700 text-sm resize-none min-h-[100px] leading-relaxed"
+                placeholder="Detalhes técnicos da execução..."
+                value={editedHistory}
+                onChange={setEditedHistory}
+              />
+            </Row>
+          )}
         </div>
 
         {/* ════ COLUNA DIREITA — Comentários ════ */}
@@ -682,14 +711,6 @@ const OrderDetails: React.FC = () => {
                 >
                   Adicionar Comentário
                 </button>
-                {settings?.enableAttachments && !isLocked && (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-all flex items-center gap-1.5"
-                  >
-                    Anexar Arquivo <i className="fa-solid fa-paperclip text-xs"></i>
-                  </button>
-                )}
               </div>
             </div>
           ) : (
