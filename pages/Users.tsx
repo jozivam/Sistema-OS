@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
 import { isTrialUser, TRIAL_ADMIN_ID, TRIAL_TECH_ID, TRIAL_COMPANY_ID } from '../services/trialService';
-import { User, UserRole } from '../types';
+import { User, UserRole, ADMIN_LIMITS, Company } from '../types';
 import { Link } from 'react-router-dom';
 
 const Users: React.FC = () => {
@@ -13,7 +13,8 @@ const Users: React.FC = () => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState('');
-  const [forceLogoutToast, setForceLogoutToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'info' | 'error' } | null>(null);
+  const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -43,8 +44,12 @@ const Users: React.FC = () => {
         ];
         setUsers(demoUsers);
       } else {
-        const fetchedUsers = await dbService.getUsers(user.companyId);
-        setUsers(fetchedUsers);
+        const [fetchedUsers, fetchedCompany] = await Promise.all([
+          dbService.getUsers(user.companyId),
+          dbService.getCompany(user.companyId)
+        ]);
+        setUsers(fetchedUsers || []);
+        setCurrentCompany(fetchedCompany);
       }
     } catch (error) {
       console.error("Erro ao carregar usuários:", error);
@@ -115,7 +120,8 @@ const Users: React.FC = () => {
           ...(formData.password && { password: formData.password })
         });
         setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
-        alert("Usuário atualizado com sucesso!");
+        setToast({ message: "Usuário atualizado com sucesso!", type: 'success' });
+        setTimeout(() => setToast(null), 3000);
       } else {
         setLoading(true);
         // Automação: Cria no Auth e na Tabela Pública via Edge Function
@@ -124,7 +130,9 @@ const Users: React.FC = () => {
           password: formData.password,
           name: formData.name,
           role: formData.role,
-          company_id: currentUser?.companyId || ''
+          company_id: currentUser?.companyId || '',
+          phone: formData.phone,
+          city: formData.city
         });
 
         // O trigger no banco já cria o registro em public.users, 
@@ -141,19 +149,25 @@ const Users: React.FC = () => {
         };
 
         setUsers(prev => [...prev, newUser]);
-        alert(`Usuário cadastrado com sucesso!\n\nE-mail: ${formData.email}\nSenha: ${finalPassword}`);
+        setToast({ message: `Técnico ${formData.name} cadastrado com sucesso!`, type: 'success' });
+        setTimeout(() => setToast(null), 5000);
       }
       setModalOpen(false);
     } catch (error: any) {
       console.error("Erro ao salvar usuário:", error);
-      alert(`Erro ao salvar usuário: ${error.message || 'Verifique se a Edge Function foi implantada.'}`);
+      setToast({ message: `Erro: ${error.message || 'Falha ao salvar'}`, type: 'error' });
+      setTimeout(() => setToast(null), 5000);
     } finally {
       setLoading(false);
     }
   };
 
   const toggleBlock = async (userId: string) => {
-    if (userId === currentUser?.id) return alert('Você não pode bloquear a si mesmo!');
+    if (userId === currentUser?.id) {
+      setToast({ message: 'Você não pode bloquear a si mesmo!', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
 
     try {
       const user = users.find(u => u.id === userId);
@@ -164,12 +178,17 @@ const Users: React.FC = () => {
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, isBlocked: newBlockedState } : u));
     } catch (error) {
       console.error("Erro ao alterar bloqueio:", error);
-      alert("Erro ao alterar bloqueio do usuário.");
+      setToast({ message: "Erro ao alterar bloqueio do usuário.", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (id === currentUser?.id) return alert('Você não pode excluir a si mesmo!');
+    if (id === currentUser?.id) {
+      setToast({ message: 'Você não pode excluir a si mesmo!', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
     if (!window.confirm('Excluir este usuário permanentemente?')) return;
 
     try {
@@ -177,7 +196,8 @@ const Users: React.FC = () => {
       setUsers(prev => prev.filter(u => u.id !== id));
     } catch (error) {
       console.error("Erro ao excluir usuário:", error);
-      alert("Erro ao excluir usuário.");
+      setToast({ message: "Erro ao excluir usuário.", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
     }
   };
 
@@ -185,11 +205,12 @@ const Users: React.FC = () => {
     if (!window.confirm(`Encerrar a sessão ativa de "${userName}"? O usuário será desconectado assim que tentar acessar o sistema.`)) return;
     try {
       await authService.forceLogoutUser(userId);
-      setForceLogoutToast(`Sessão de ${userName} encerrada.`);
-      setTimeout(() => setForceLogoutToast(null), 3000);
+      setToast({ message: `Sessão de ${userName} encerrada com sucesso.`, type: 'info' });
+      setTimeout(() => setToast(null), 3000);
     } catch (error) {
       console.error('Erro ao encerrar sessão:', error);
-      alert('Erro ao encerrar sessão do usuário.');
+      setToast({ message: 'Erro ao encerrar sessão do usuário.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
     }
   };
 
@@ -208,9 +229,34 @@ const Users: React.FC = () => {
 
   return (
     <div>
-      {forceLogoutToast && (
-        <div className="fixed top-6 right-6 z-[100] bg-slate-900 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl animate-in slide-in-from-top-4 flex items-center gap-2">
-          <i className="fa-solid fa-circle-check text-orange-400"></i> {forceLogoutToast}
+      {/* Toast Notification Premium */}
+      {toast && (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-8 duration-500">
+          <div className={`
+            flex items-center gap-4 px-6 py-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)]
+            backdrop-blur-xl border border-white/40 ring-1 ring-black/5
+            ${toast.type === 'success' ? 'bg-emerald-50/80 text-emerald-900' :
+              toast.type === 'error' ? 'bg-rose-50/80 text-rose-900' :
+                'bg-indigo-50/80 text-indigo-900'}
+          `}>
+            <div className={`
+              w-10 h-10 rounded-xl flex items-center justify-center text-lg
+              ${toast.type === 'success' ? 'bg-emerald-500 text-white' :
+                toast.type === 'error' ? 'bg-rose-500 text-white' :
+                  'bg-indigo-500 text-white'}
+            `}>
+              <i className={`fa-solid ${toast.type === 'success' ? 'fa-check' :
+                toast.type === 'error' ? 'fa-xmark' :
+                  'fa-info'
+                }`}></i>
+            </div>
+            <div className="flex flex-col">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 leading-none mb-1">
+                Notificação do Sistema
+              </p>
+              <p className="text-sm font-bold tracking-tight">{toast.message}</p>
+            </div>
+          </div>
         </div>
       )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -395,14 +441,51 @@ const Users: React.FC = () => {
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Nível de Permissão</label>
                 <select
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"
                   value={formData.role}
                   onChange={e => setFormData({ ...formData, role: e.target.value as UserRole })}
                 >
+                  {/* Opção Técnico sempre disponível */}
                   <option value={UserRole.TECH}>Técnico (Acesso restrito às suas OS)</option>
-                  <option value={UserRole.ADMIN}>Administrador (Acesso total)</option>
-                  <option value={UserRole.DEVELOPER}>Desenvolvedor (Gestor Supremo)</option>
+
+                  {/* Administrador: apenas se o usuário for DEVELOPER ou se não atingiu o limite do plano */}
+                  {(() => {
+                    const isAdminUser = currentUser?.role === UserRole.ADMIN;
+                    const isDevUser = currentUser?.role === UserRole.DEVELOPER;
+                    const planType = currentCompany?.plan;
+                    const planLimit = planType ? ADMIN_LIMITS[planType] : null;
+                    const adminUserCount = (users || []).filter(u => u.role === UserRole.ADMIN).length;
+                    const canAddAdmin = planLimit === null || adminUserCount < (planLimit || 0) || (editingUserId && users.find(u => u.id === editingUserId)?.role === UserRole.ADMIN);
+
+                    if (isDevUser) {
+                      return (
+                        <>
+                          <option value={UserRole.ADMIN}>Administrador (Acesso total)</option>
+                          <option value={UserRole.DEVELOPER}>Desenvolvedor (Gestor Supremo)</option>
+                        </>
+                      );
+                    }
+
+                    if (isAdminUser) {
+                      return canAddAdmin ? (
+                        <option value={UserRole.ADMIN}>Administrador (Acesso total)</option>
+                      ) : null;
+                    }
+
+                    return null;
+                  })()}
                 </select>
+                {/* Alerta de limite de plano */}
+                {currentUser?.role === UserRole.ADMIN &&
+                  currentCompany &&
+                  ADMIN_LIMITS[currentCompany.plan] !== null &&
+                  (users || []).filter(u => u.role === UserRole.ADMIN).length >= (ADMIN_LIMITS[currentCompany.plan] || 0) &&
+                  (!editingUserId || users.find(u => u.id === editingUserId)?.role !== UserRole.ADMIN) && (
+                    <p className="text-[10px] text-red-500 font-bold mt-1 uppercase tracking-tight">
+                      <i className="fa-solid fa-triangle-exclamation mr-1"></i>
+                      Limite de Administradores atingido para seu plano ({currentCompany.plan}).
+                    </p>
+                  )}
               </div>
 
               <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">

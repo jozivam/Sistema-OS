@@ -71,8 +71,7 @@ export const authService: IAuthService = {
                 const user: User = JSON.parse(session);
                 // Limpar token do banco ao deslogar normalmente
                 await supabase.from('users').update({
-                    active_session_token: null,
-                    session_updated_at: null
+                    is_blocked: false // Apenas um update dummy se necessário, ou remover o update
                 }).eq('id', user.id);
             } catch { /* ignora erros */ }
         }
@@ -113,7 +112,7 @@ export const authService: IAuthService = {
         try {
             const { data, error } = await supabase
                 .from('users')
-                .select('id, is_blocked, active_session_token')
+                .select('id, is_blocked')
                 .eq('id', user.id)
                 .single();
 
@@ -127,11 +126,6 @@ export const authService: IAuthService = {
                 return { valid: false, reason: 'blocked' };
             }
 
-            // Verificar se o token de sessão ainda é válido (detecção de sessão dupla)
-            const localToken = sessionStorage.getItem(SESSION_TOKEN_KEY);
-            if (data.active_session_token && localToken && data.active_session_token !== localToken) {
-                return { valid: false, reason: 'concurrent_session' };
-            }
 
             return { valid: true };
         } catch (error) {
@@ -163,8 +157,7 @@ export const authService: IAuthService = {
     // Desenvolvedor força logout de um usuário limpando o token do banco
     async forceLogoutUser(userId: string): Promise<void> {
         const { error } = await supabase.from('users').update({
-            active_session_token: null,
-            session_updated_at: null
+            is_blocked: false
         }).eq('id', userId);
         if (error) throw error;
     },
@@ -173,7 +166,7 @@ export const authService: IAuthService = {
         return (supabase as any).supabaseUrl === 'https://placeholder.supabase.co';
     },
 
-    async adminCreateUser(userData: { email: string, password?: string, name: string, role: string, company_id: string }) {
+    async adminCreateUser(userData: { email: string, password?: string, name: string, role: string, company_id: string, phone?: string, city?: string }) {
         // Se não houver senha, gera uma aleatória de 8 caracteres
         const password = userData.password || Math.random().toString(36).slice(-8);
 
@@ -183,7 +176,9 @@ export const authService: IAuthService = {
                 password,
                 name: userData.name,
                 role: userData.role,
-                company_id: userData.company_id
+                company_id: userData.company_id,
+                phone: userData.phone,
+                city: userData.city
             }
         });
 

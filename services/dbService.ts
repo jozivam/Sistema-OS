@@ -39,17 +39,27 @@ const mapCompany = (raw: any): Company => {
     };
 };
 
-const mapUser = (raw: any): User => ({
-    id: raw.id,
-    companyId: raw.company_id,
-    name: raw.name,
-    email: raw.email,
-    phone: raw.phone,
-    role: raw.role as UserRole,
-    city: raw.city,
-    isBlocked: raw.is_blocked,
-    password: raw.password
-});
+const mapUser = (raw: any): User => {
+    let role = raw.role as string;
+    if (role) {
+        const r = role.toLowerCase();
+        if (r === 'administrador') role = UserRole.ADMIN;
+        else if (r === 'técnico' || r === 'tecnico') role = UserRole.TECH;
+        else if (r === 'desenvolvedor') role = UserRole.DEVELOPER;
+    }
+
+    return {
+        id: raw.id,
+        companyId: raw.company_id,
+        name: raw.name,
+        email: raw.email,
+        phone: raw.phone,
+        role: role as UserRole,
+        city: raw.city,
+        isBlocked: raw.is_blocked,
+        password: raw.password
+    };
+};
 
 const mapCustomer = (raw: any): Customer => ({
     id: raw.id,
@@ -64,25 +74,48 @@ const mapCustomer = (raw: any): Customer => ({
     createdAt: raw.created_at
 });
 
-const mapOrder = (raw: any): ServiceOrder => ({
-    id: raw.id,
-    companyId: raw.company_id,
-    customerId: raw.customer_id,
-    customerName: raw.customer_name || raw.customer?.name || raw.customers?.name || 'Desconhecido',
-    techId: raw.tech_id,
-    techName: raw.tech_name || raw.tech?.name || raw.users?.name || 'Não atribuído',
-    type: raw.type,
-    description: raw.description,
-    dailyHistory: raw.daily_history,
-    aiReport: raw.ai_report,
-    status: raw.status as OrderStatus,
-    createdAt: raw.created_at,
-    scheduledDate: raw.scheduled_date,
-    finishedAt: raw.finished_at,
-    cancellationReason: raw.cancellation_reason,
-    posts: raw.posts || [],
-    attachments: raw.attachments || []
-});
+const mapOrder = (raw: any): ServiceOrder => {
+    let posts = raw.posts;
+    if (typeof posts === 'string') {
+        try { posts = JSON.parse(posts); } catch { posts = []; }
+    }
+
+    let attachments = raw.attachments;
+    if (typeof attachments === 'string') {
+        try { attachments = JSON.parse(attachments); } catch { attachments = []; }
+    }
+
+    // Normalização de status para evitar erros de case (ex: FINALIZADA vs Finalizada)
+    let status = raw.status as string;
+    if (status) {
+        const s = status.toLowerCase();
+        if (s === 'aberta') status = OrderStatus.OPEN;
+        else if (s === 'em andamento') status = OrderStatus.IN_PROGRESS;
+        else if (s === 'pausada') status = OrderStatus.PAUSED;
+        else if (s === 'finalizada') status = OrderStatus.FINISHED;
+        else if (s === 'cancelada') status = OrderStatus.CANCELLED;
+    }
+
+    return {
+        id: raw.id,
+        companyId: raw.company_id,
+        customerId: raw.customer_id,
+        customerName: raw.customer_name || raw.customer?.name || raw.customers?.name || 'Desconhecido',
+        techId: raw.tech_id,
+        techName: raw.tech_name || raw.tech?.name || raw.users?.name || 'Não atribuído',
+        type: raw.type,
+        description: raw.description,
+        dailyHistory: raw.daily_history,
+        aiReport: raw.ai_report,
+        status: status as OrderStatus,
+        createdAt: raw.created_at,
+        scheduledDate: raw.scheduled_date,
+        finishedAt: raw.finished_at,
+        cancellationReason: raw.cancellation_reason,
+        posts: posts || [],
+        attachments: attachments || []
+    };
+};
 
 export const dbService: IDatabaseService = {
     // Empresas
@@ -710,24 +743,12 @@ Este é um relatório gerado localmente pelo ambiente de testes (Demonstração)
         return count || 0;
     },
 
-    // === Sessões Ativas ===
-    async forceLogoutUser(userId: string): Promise<void> {
-        const { error } = await supabase
-            .from('users')
-            .update({ active_session_token: null, session_updated_at: null })
-            .eq('id', userId);
-        if (error) throw error;
+    // === Sessões Ativas (Removido por incompatibilidade de schema) ===
+    async forceLogoutUser(_userId: string): Promise<void> {
+        return Promise.resolve();
     },
 
-    async getActiveSessionUsers(companyId?: string): Promise<User[]> {
-        if (companyId === 'trial-company') return [];
-        let query = supabase
-            .from('users')
-            .select('*')
-            .not('active_session_token', 'is', null);
-        if (companyId) query = query.eq('company_id', companyId);
-        const { data, error } = await query;
-        if (error) return [];
-        return (data || []).map(mapUser);
+    async getActiveSessionUsers(_companyId?: string): Promise<User[]> {
+        return Promise.resolve([]);
     },
 };

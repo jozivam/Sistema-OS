@@ -3,19 +3,26 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
 import { isTrialUser, getTrialOrders, getTrialCustomers } from '../services/trialService';
-import { OrderStatus, UserRole, ServiceOrder, Customer, User } from '../types';
+import { OrderStatus, UserRole, ServiceOrder, Customer, User, Company } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
+import ServiceOrderModal from '../components/ServiceOrderModal';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [company, setCompany] = useState<Company | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [visibleUpcomingCount, setVisibleUpcomingCount] = useState(5);
   const [visibleCompletedCount, setVisibleCompletedCount] = useState(5);
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+
+  const [isModalOpen, setModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -31,9 +38,11 @@ const Dashboard: React.FC = () => {
           console.log('Carregando dados para Empresa ID:', user.companyId);
           console.log('Usuário Logado:', user.name, '(ID:', user.id, '- Role:', user.role, ')');
 
-          const [fetchedOrders, fetchedCustomers] = await Promise.all([
+          const [fetchedOrders, fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
             dbService.getOrders(user.companyId),
-            dbService.getCustomers(user.companyId)
+            dbService.getCustomers(user.companyId),
+            dbService.getUsers(user.companyId),
+            dbService.getCompany(user.companyId)
           ]);
 
           console.log('Ordens encontradas:', fetchedOrders.length);
@@ -41,6 +50,8 @@ const Dashboard: React.FC = () => {
 
           setOrders(fetchedOrders);
           setCustomers(fetchedCustomers);
+          setUsers(fetchedUsers);
+          setCompany(fetchedCompany);
         } else {
           console.warn('Usuário logado sem Company ID definido.');
         }
@@ -72,6 +83,21 @@ const Dashboard: React.FC = () => {
       console.error("Erro ao excluir ordem:", error);
       alert("Erro ao excluir ordem de serviço.");
     }
+  };
+
+  const handleModalSuccess = (message: string) => {
+    setToast({ message, type: 'success' });
+    setTimeout(() => setToast(null), 3000);
+    // Recarregar ordens
+    const reloadOrders = async () => {
+      if (currentUser?.companyId) {
+        const fetchedOrders = await dbService.getOrders(currentUser.companyId);
+        setOrders(fetchedOrders);
+      } else if (isTrialUser(currentUser)) {
+        setOrders(getTrialOrders());
+      }
+    };
+    reloadOrders();
   };
 
   if (loading) {
@@ -157,10 +183,13 @@ const Dashboard: React.FC = () => {
             <div className="flex flex-wrap items-center gap-3">
               {isAdmin && (
                 <>
-                  <Link to="/ordens?action=new" className="px-5 py-2.5 bg-[var(--blue-primary)] text-white hover:bg-[var(--blue-hover)] rounded-xl transition-colors font-bold text-sm shadow-sm active:scale-[0.98] flex items-center gap-2">
+                  <button
+                    onClick={() => { setEditingOrder(null); setModalOpen(true); }}
+                    className="px-5 py-2.5 bg-[var(--blue-primary)] text-white hover:bg-[var(--blue-hover)] rounded-xl transition-colors font-bold text-sm shadow-sm active:scale-[0.98] flex items-center gap-2"
+                  >
                     <i className="fa-solid fa-plus"></i>
                     Nova OS
-                  </Link>
+                  </button>
                   <Link to="/clientes?action=new" className="px-5 py-2.5 bg-white text-[var(--text-primary)] hover:bg-slate-50 border border-[var(--border-color)] rounded-xl transition-colors font-bold text-sm active:scale-[0.98] flex items-center gap-2">
                     <i className="fa-solid fa-user-plus text-[var(--text-secondary)]"></i>
                     Novo Cliente
@@ -229,7 +258,7 @@ const Dashboard: React.FC = () => {
                           {order.scheduledDate ? new Date(order.scheduledDate).toLocaleDateString('pt-BR') : '-'}
                         </td>
                         <td className="px-8 py-5">
-                          <span className={`text-[10px] px-3 py-1.5 rounded-full font-bold uppercase tracking-widest border ${order.status === OrderStatus.IN_PROGRESS ? 'bg-orange-50 text-orange-600 border-orange-100/50' :
+                          <span className={`whitespace-nowrap text-[10px] px-3 py-1.5 rounded-full font-bold uppercase tracking-widest border ${order.status === OrderStatus.IN_PROGRESS ? 'bg-orange-50 text-orange-600 border-orange-100/50' :
                             order.status === OrderStatus.PAUSED ? 'bg-yellow-50 text-yellow-600 border-yellow-100/50' :
                               order.status === OrderStatus.FINISHED ? 'bg-green-50 text-green-600 border-green-100/50' :
                                 'bg-slate-50 text-slate-500 border-slate-200/50'
@@ -247,7 +276,7 @@ const Dashboard: React.FC = () => {
                               <i className="fa-solid fa-eye text-sm"></i>
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation(); navigate(`/ordens/${order.id}`); }}
+                              onClick={(e) => { e.stopPropagation(); setEditingOrder(order); setModalOpen(true); }}
                               className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-all"
                               title="Editar"
                             >
@@ -366,6 +395,33 @@ const Dashboard: React.FC = () => {
         confirmText="Excluir Agora"
         variant="danger"
       />
+
+      <ServiceOrderModal
+        isOpen={isModalOpen}
+        onClose={() => { setModalOpen(false); setEditingOrder(null); }}
+        onSuccess={handleModalSuccess}
+        editingOrder={editingOrder}
+        currentUser={currentUser}
+        company={company}
+        customers={customers}
+        users={users}
+        allOrders={orders}
+        onOrdersUpdate={setOrders}
+      />
+
+      {/* Toast Notificação */}
+      {toast && (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[999] animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className={`px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-4 min-w-[320px] ${toast.type === 'success' ? 'bg-emerald-500/90 border-emerald-400 text-white' : 'bg-red-500/90 border-red-400 text-white'
+            }`}>
+            <i className={`fa-solid ${toast.type === 'success' ? 'fa-check' : 'fa-circle-exclamation'} text-lg`}></i>
+            <div className="flex-1">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-0.5">Sistema</p>
+              <p className="text-sm font-bold tracking-tight">{toast.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -416,7 +416,7 @@ const Customers: React.FC = () => {
                         <button onClick={() => handleOpenEditModal(customer)} className="w-8 h-8 rounded hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors" title="Editar">
                           <i className="fa-solid fa-pen text-xs"></i>
                         </button>
-                        <Link to={`/ordens?search=${customer.name}`} className="w-8 h-8 rounded hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors" title="Ver Histórico">
+                        <Link to={`/ordens?customerId=${customer.id}`} className="w-8 h-8 rounded hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors" title="Ver Histórico">
                           <i className="fa-solid fa-list text-xs"></i>
                         </Link>
                         <button onClick={() => setCustomerToDelete(customer.id)} className="w-8 h-8 rounded hover:bg-red-50 text-red-500 flex items-center justify-center transition-colors" title="Remover">

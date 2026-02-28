@@ -7,8 +7,9 @@ import {
   TRIAL_COMPANY_ID, TRIAL_ADMIN_ID, TRIAL_TECH_ID
 } from '../services/trialService';
 import { OrderStatus, ServiceOrder, UserRole, OrderAttachment, User, Customer, Company } from '../types';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
+import ServiceOrderModal from '../components/ServiceOrderModal';
 
 // ─── Sub-modal: Adicionar / Editar Cliente ────────────────────────────────────
 interface CustomerFormProps {
@@ -357,6 +358,7 @@ const TechFormModal: React.FC<TechFormProps> = ({ onSave, onClose, companyId, ed
 // ─── Página Principal ─────────────────────────────────────────────────────────
 const Orders: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -374,21 +376,14 @@ const Orders: React.FC = () => {
   const [editingCustomerInline, setEditingCustomerInline] = useState<Customer | null>(null);
   const [showTechForm, setShowTechForm] = useState(false);
   const [editingTechInline, setEditingTechInline] = useState<User | null>(null);
+  const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const [filters, setFilters] = useState({
     status: '',
     tech: '',
-    search: ''
-  });
-
-  const [newOrder, setNewOrder] = useState({
-    customerId: searchParams.get('clientId') || '',
-    techId: '',
-    type: '',
-    description: '',
-    createdAt: '',
-    scheduledDate: '',
-    attachments: [] as OrderAttachment[]
+    search: '',
+    customerId: '' // Novo filtro por ID
   });
 
   const getCurrentDateTime = () => {
@@ -421,32 +416,6 @@ const Orders: React.FC = () => {
         setCustomers(trialCustomers);
         setUsers(trialUsers);
         setCompany(trialCompany);
-        setNewOrder(prev => ({
-          ...prev,
-          techId: TRIAL_TECH_ID,
-          type: trialCompany.settings.orderTypes[0],
-          createdAt: getCurrentDateTime()
-        }));
-      } else {
-        const [fetchedOrders, fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
-          dbService.getOrders(user.companyId),
-          dbService.getCustomers(user.companyId),
-          dbService.getUsers(user.companyId),
-          dbService.getCompany(user.companyId)
-        ]);
-
-        setOrders(fetchedOrders);
-        setCustomers(fetchedCustomers);
-        setUsers(fetchedUsers);
-        setCompany(fetchedCompany);
-
-        const defaultType = fetchedCompany?.settings.orderTypes[0] || 'Suporte';
-        setNewOrder(prev => ({
-          ...prev,
-          techId: user.role === UserRole.TECH ? user.id : '',
-          type: defaultType,
-          createdAt: getCurrentDateTime()
-        }));
       }
     } catch (error) {
       console.error("Erro ao carregar dados de ordens:", error);
@@ -461,7 +430,22 @@ const Orders: React.FC = () => {
 
   useEffect(() => {
     if (searchParams.get('clientId')) setModalOpen(true);
-  }, [searchParams]);
+
+    // Captura filtro de cliente da URL
+    const custId = searchParams.get('customerId');
+    if (custId) {
+      setFilters(prev => ({ ...prev, customerId: custId }));
+    }
+
+    const editId = searchParams.get('edit');
+    if (editId) {
+      const orderToEdit = orders.find(o => o.id === editId);
+      if (orderToEdit) {
+        setEditingOrder(orderToEdit);
+        setModalOpen(true);
+      }
+    }
+  }, [searchParams, orders]);
 
   const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.DEVELOPER || isTrialUser(currentUser);
   const settings = company?.settings || (window as any).initialData?.settings;
@@ -470,110 +454,25 @@ const Orders: React.FC = () => {
     const matchesUser = isAdmin || order.techId === currentUser?.id;
     const matchesStatus = !filters.status || order.status === filters.status;
     const matchesTech = !filters.tech || order.techId === filters.tech;
+    const matchesCustomerId = !filters.customerId || order.customerId === filters.customerId;
     const matchesSearch = !filters.search ||
       order.customerName.toLowerCase().includes(filters.search.toLowerCase()) ||
       order.id.toLowerCase().includes(filters.search.toLowerCase());
 
-    return matchesUser && matchesStatus && matchesTech && matchesSearch;
+    return matchesUser && matchesStatus && matchesTech && matchesCustomerId && matchesSearch;
   });
 
   const visibleOrders = showAllOrders ? filteredOrders : filteredOrders.slice(0, 10);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+  // Suprimidos handlers de arquivos pois agora são internos do ServiceOrderModal
 
-    Array.from(files).forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        const attachment: OrderAttachment = {
-          id: Math.random().toString(36).substr(2, 9),
-          name: file.name,
-          mimeType: file.type,
-          size: file.size,
-          data: base64,
-          createdAt: new Date().toISOString()
-        };
-        setNewOrder(prev => ({
-          ...prev,
-          attachments: [...prev.attachments, attachment]
-        }));
-      };
-      reader.readAsDataURL(file);
-    });
-  };
+  const handleModalSuccess = (message: string) => {
+    setToast({ message, type: 'success' });
+    setTimeout(() => setToast(null), 3000);
 
-  const removePendingAttachment = (id: string) => {
-    setNewOrder(prev => ({
-      ...prev,
-      attachments: prev.attachments.filter(a => a.id !== id)
-    }));
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const customer = customers.find(c => c.id === newOrder.customerId);
-      const tech = users.find(u => u.id === newOrder.techId);
-
-      if (!customer || !tech) {
-        alert('Selecione um cliente e um técnico válidos.');
-        return;
-      }
-
-      if (isTrialUser(currentUser)) {
-        const newTrialOrder: ServiceOrder = {
-          id: 'trial-order-' + Date.now(),
-          companyId: TRIAL_COMPANY_ID,
-          customerId: customer.id,
-          customerName: customer.name,
-          techId: tech.id,
-          techName: tech.name,
-          type: newOrder.type,
-          description: newOrder.description,
-          scheduledDate: newOrder.scheduledDate,
-          aiReport: '',
-          status: OrderStatus.OPEN,
-          createdAt: new Date().toISOString(),
-          posts: [],
-          attachments: newOrder.attachments
-        };
-        const updated = [newTrialOrder, ...orders];
-        saveTrialOrders(updated);
-        setOrders(updated);
-      } else {
-        const orderData: Omit<ServiceOrder, 'id' | 'createdAt'> = {
-          companyId: currentUser?.companyId || '',
-          customerId: customer.id,
-          customerName: customer.name,
-          techId: tech.id,
-          techName: tech.name,
-          type: newOrder.type,
-          description: newOrder.description,
-          scheduledDate: newOrder.scheduledDate,
-          aiReport: '',
-          status: OrderStatus.OPEN,
-          posts: [],
-          attachments: newOrder.attachments
-        };
-        const createdOrder = await dbService.createOrder(orderData);
-        setOrders(prev => [createdOrder, ...prev]);
-      }
-
-      setModalOpen(false);
-      setNewOrder({
-        customerId: '',
-        techId: isTrialUser(currentUser) ? TRIAL_TECH_ID : (currentUser?.role === UserRole.TECH ? currentUser.id : ''),
-        type: company?.settings.orderTypes[0] || 'Suporte',
-        description: '',
-        createdAt: getCurrentDateTime(),
-        scheduledDate: '',
-        attachments: []
-      });
-    } catch (error) {
-      console.error("Erro ao criar OS:", error);
-      alert("Erro ao criar OS. Tente novamente.");
+    // Se havia parâmetros de busca (edit ou action), limpa-os para evitar que o modal reabra
+    if (searchParams.toString()) {
+      navigate('/ordens', { replace: true });
     }
   };
 
@@ -606,25 +505,24 @@ const Orders: React.FC = () => {
       if (isTrialUser(currentUser)) saveTrialCustomers(updated);
       return updated;
     });
-    setNewOrder(prev => ({ ...prev, customerId: saved.id }));
     setShowCustomerForm(false);
     setEditingCustomerInline(null);
   };
 
-  // Handler: save new/edited tech from inline form
+  const handleEditOrder = (order: ServiceOrder) => {
+    setEditingOrder(order);
+    setModalOpen(true);
+  };
+
   const handleTechSaved = (saved: User) => {
     setUsers(prev => {
       const exists = prev.find(u => u.id === saved.id);
       if (exists) return prev.map(u => u.id === saved.id ? saved : u);
       return [...prev, saved];
     });
-    setNewOrder(prev => ({ ...prev, techId: saved.id }));
     setShowTechForm(false);
     setEditingTechInline(null);
   };
-
-  const selectedCustomer = customers.find(c => c.id === newOrder.customerId);
-  const selectedTech = users.find(u => u.id === newOrder.techId);
 
   const getStatusStyle = (status: OrderStatus) => {
     switch (status) {
@@ -692,37 +590,55 @@ const Orders: React.FC = () => {
       {/* Tabela */}
       <div className="saas-card overflow-hidden">
         {/* Filtros */}
-        <div className="p-6 border-b border-[var(--border-color)] bg-white flex flex-col lg:flex-row gap-4">
-          <div className="relative flex-1">
-            <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
-            <input
-              type="text"
-              placeholder="Buscar por cliente ou ID..."
-              className="w-full pl-11 pr-4 py-2.5 bg-white border border-[var(--border-color)] rounded-full outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm transition-shadow shadow-sm"
-              value={filters.search}
-              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-            />
-          </div>
-          <div className="flex gap-3">
-            <select
-              className="flex-1 lg:flex-none px-4 py-2.5 bg-white border border-[var(--border-color)] rounded-full outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm text-[var(--text-primary)] transition-shadow shadow-sm cursor-pointer"
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value as OrderStatus })}
-            >
-              <option value="">Todos Status</option>
-              {Object.values(OrderStatus).map(status => <option key={status} value={status}>{status}</option>)}
-            </select>
-            {isAdmin && (
+        <div className="p-6 border-b border-[var(--border-color)] bg-white space-y-4">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="relative flex-1">
+              <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
+              <input
+                type="text"
+                placeholder="Buscar por cliente ou ID..."
+                className="w-full pl-11 pr-4 py-2.5 bg-white border border-[var(--border-color)] rounded-full outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm transition-shadow shadow-sm"
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+              />
+            </div>
+            <div className="flex gap-3">
               <select
                 className="flex-1 lg:flex-none px-4 py-2.5 bg-white border border-[var(--border-color)] rounded-full outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm text-[var(--text-primary)] transition-shadow shadow-sm cursor-pointer"
-                value={filters.tech}
-                onChange={(e) => setFilters({ ...filters, tech: e.target.value })}
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value as OrderStatus })}
               >
-                <option value="">Todos Técnicos</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                <option value="">Todos Status</option>
+                {Object.values(OrderStatus).map(status => <option key={status} value={status}>{status}</option>)}
               </select>
-            )}
+              {isAdmin && (
+                <select
+                  className="flex-1 lg:flex-none px-4 py-2.5 bg-white border border-[var(--border-color)] rounded-full outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-sm text-[var(--text-primary)] transition-shadow shadow-sm cursor-pointer"
+                  value={filters.tech}
+                  onChange={(e) => setFilters({ ...filters, tech: e.target.value })}
+                >
+                  <option value="">Todos Técnicos</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              )}
+            </div>
           </div>
+
+          {filters.customerId && (
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-blue-700 text-xs font-bold">
+                <i className="fa-solid fa-filter text-[10px]"></i>
+                Filtrando por Cliente: {orders.find(o => o.customerId === filters.customerId)?.customerName || 'Carregando...'}
+                <button
+                  onClick={() => setFilters(prev => ({ ...prev, customerId: '' }))}
+                  className="ml-2 hover:text-blue-900 transition-colors"
+                  title="Limpar filtro"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="p-0">
@@ -743,7 +659,7 @@ const Orders: React.FC = () => {
                     <tr key={order.id} className="hover:bg-slate-50 transition-colors group bg-white">
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-1.5">
-                          <span className={`w-fit text-xs px-2.5 py-1 rounded-full font-semibold border ${getStatusStyle(order.status)}`}>
+                          <span className={`w-fit whitespace-nowrap text-xs px-2.5 py-1 rounded-full font-semibold border ${getStatusStyle(order.status)}`}>
                             {order.status}
                           </span>
                           <span className="text-xs font-medium text-[var(--text-muted)] pl-1">
@@ -784,6 +700,13 @@ const Orders: React.FC = () => {
                               <i className="fa-solid fa-trash-can text-xs"></i>
                             </button>
                           )}
+                          <button
+                            onClick={() => handleEditOrder(order)}
+                            className="w-8 h-8 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 transition-colors"
+                            title="Editar OS"
+                          >
+                            <i className="fa-solid fa-pen-to-square text-xs"></i>
+                          </button>
                           <Link
                             to={`/ordens/${order.id}`}
                             className="w-8 h-8 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 transition-colors"
@@ -827,257 +750,50 @@ const Orders: React.FC = () => {
         )}
       </div>
 
-      {/* Modal - Nova OS */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-md z-[100] flex items-end md:items-center justify-center p-0 md:p-4 transition-all">
-          <div className="bg-white rounded-t-3xl md:rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col animate-in slide-in-from-bottom duration-300">
+      {/* Modal Compartilhado - Nova / Editar OS */}
+      <ServiceOrderModal
+        isOpen={isModalOpen}
+        onClose={() => { setModalOpen(false); setEditingOrder(null); }}
+        onSuccess={handleModalSuccess}
+        editingOrder={editingOrder}
+        currentUser={currentUser}
+        company={company}
+        customers={customers}
+        users={users}
+        allOrders={orders}
+        onOrdersUpdate={setOrders}
+        initialClientId={searchParams.get('clientId') || ''}
+        onAddCustomer={() => { setEditingCustomerInline(null); setShowCustomerForm(true); }}
+        onEditCustomer={(customer) => { setEditingCustomerInline(customer); setShowCustomerForm(true); }}
+        onAddTech={() => { setEditingTechInline(null); setShowTechForm(true); }}
+        onEditTech={(tech) => { setEditingTechInline(tech); setShowTechForm(true); }}
+      />
 
-            {/* Header do Modal */}
-            <div className="px-8 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-main)] shrink-0">
-              <div>
-                <h3 className="text-lg font-black text-[var(--text-primary)] uppercase tracking-tighter">Nova Ordem de Serviço</h3>
-                <p className="text-[10px] text-[var(--text-secondary)] font-bold uppercase tracking-widest mt-0.5">Preencha os dados do atendimento</p>
-              </div>
-              <button onClick={() => setModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full text-slate-400 hover:bg-white hover:text-slate-900 transition-all">
-                <i className="fa-solid fa-xmark text-xl"></i>
-              </button>
+      {/* Notificação Toast Premium */}
+      {toast && (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[999] animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className={`
+            px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-4 min-w-[320px]
+            ${toast.type === 'success'
+              ? 'bg-emerald-500/90 border-emerald-400 text-white'
+              : toast.type === 'error'
+                ? 'bg-red-500/90 border-red-400 text-white'
+                : 'bg-blue-500/90 border-blue-400 text-white'}
+          `}>
+            <div className={`
+              w-10 h-10 rounded-xl flex items-center justify-center shrink-0
+              ${toast.type === 'success' ? 'bg-white/20' : toast.type === 'error' ? 'bg-white/20' : 'bg-white/20'}
+            `}>
+              <i className={`fa-solid ${toast.type === 'success' ? 'fa-check' : toast.type === 'error' ? 'fa-circle-exclamation' : 'fa-info'
+                } text-lg`}></i>
             </div>
-
-            <form onSubmit={handleCreate} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
-
-              {/* Seção: Cliente */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] border-l-4 border-blue-500 pl-3">
-                    <i className="fa-solid fa-user mr-2"></i>Cliente Final
-                  </h4>
-                  <div className="flex gap-2">
-                    {selectedCustomer && (
-                      <button
-                        type="button"
-                        onClick={() => { setEditingCustomerInline(selectedCustomer); setShowCustomerForm(true); }}
-                        className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-all"
-                        title="Editar cliente selecionado"
-                      >
-                        <i className="fa-solid fa-pen-to-square"></i> Editar
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => { setEditingCustomerInline(null); setShowCustomerForm(true); }}
-                      className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-all"
-                      title="Adicionar novo cliente"
-                    >
-                      <i className="fa-solid fa-user-plus"></i> Novo
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <select
-                    required
-                    className="w-full px-4 py-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm font-bold uppercase tracking-tight appearance-none pr-10"
-                    value={newOrder.customerId}
-                    onChange={e => setNewOrder({ ...newOrder, customerId: e.target.value })}
-                  >
-                    <option value="">— Selecione o Cliente —</option>
-                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
-                </div>
-
-                {/* Preview do cliente selecionado */}
-                {selectedCustomer && (
-                  <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl p-4 animate-in fade-in duration-200">
-                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
-                      <i className="fa-solid fa-user text-sm"></i>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-black text-slate-900 text-sm tracking-tight">{selectedCustomer.name}</p>
-                      <p className="text-[10px] text-blue-600 font-bold mt-0.5">
-                        <i className="fa-solid fa-phone mr-1"></i>{selectedCustomer.phone}
-                        {selectedCustomer.city && <span className="ml-3"><i className="fa-solid fa-map-marker-alt mr-1"></i>{selectedCustomer.city}</span>}
-                      </p>
-                      {(selectedCustomer.address) && (
-                        <p className="text-[9px] text-slate-400 font-semibold mt-0.5 truncate">
-                          <i className="fa-solid fa-location-dot mr-1"></i>
-                          {selectedCustomer.address}{selectedCustomer.number ? `, ${selectedCustomer.number}` : ''}
-                          {selectedCustomer.sector ? ` — ${selectedCustomer.sector}` : ''}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Seção: Técnico + Tipo */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] font-black text-violet-600 uppercase tracking-[0.2em] border-l-4 border-violet-500 pl-3">
-                      <i className="fa-solid fa-user-gear mr-2"></i>Responsável
-                    </h4>
-                    <div className="flex gap-2">
-                      {selectedTech && !isTrialUser(currentUser) && (
-                        <button
-                          type="button"
-                          onClick={() => { setEditingTechInline(selectedTech); setShowTechForm(true); }}
-                          className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-violet-500 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-all"
-                        >
-                          <i className="fa-solid fa-pen-to-square"></i> Editar
-                        </button>
-                      )}
-                      {!isTrialUser(currentUser) && currentUser?.role !== UserRole.TECH && (
-                        <button
-                          type="button"
-                          onClick={() => { setEditingTechInline(null); setShowTechForm(true); }}
-                          className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-all"
-                        >
-                          <i className="fa-solid fa-plus"></i> Novo
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <select
-                      required
-                      className="w-full px-4 py-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-500 outline-none bg-white text-sm font-bold uppercase tracking-tight appearance-none pr-10"
-                      value={newOrder.techId}
-                      onChange={e => setNewOrder({ ...newOrder, techId: e.target.value })}
-                      disabled={currentUser?.role === UserRole.TECH}
-                    >
-                      <option value="">— Definir Técnico —</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                    <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
-                  </div>
-                  {selectedTech && (
-                    <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-4 py-2.5 animate-in fade-in duration-200">
-                      <div className="w-7 h-7 rounded-lg bg-violet-600 text-white flex items-center justify-center">
-                        <i className="fa-solid fa-user-gear text-[10px]"></i>
-                      </div>
-                      <div>
-                        <p className="font-black text-slate-900 text-[11px] tracking-tight">{selectedTech.name}</p>
-                        {selectedTech.city && <p className="text-[9px] text-violet-500 font-bold">{selectedTech.city}</p>}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-l-4 border-slate-300 pl-3">
-                    <i className="fa-solid fa-tag mr-2"></i>Natureza
-                  </h4>
-                  <div className="relative">
-                    <select
-                      required
-                      className="w-full px-4 py-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm font-bold uppercase tracking-tight appearance-none pr-10"
-                      value={newOrder.type}
-                      onChange={e => setNewOrder({ ...newOrder, type: e.target.value })}
-                    >
-                      {settings?.orderTypes?.map((t: string) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
-                  </div>
-                </div>
-              </div>
-
-              {/* Seção: Datas */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">
-                    <i className="fa-solid fa-calendar-day mr-1.5"></i>Data Abertura
-                  </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs font-black text-slate-700"
-                    value={newOrder.createdAt}
-                    onChange={e => setNewOrder({ ...newOrder, createdAt: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">
-                    <i className="fa-solid fa-calendar-check mr-1.5"></i>Agendamento (Prazo)
-                  </label>
-                  <input
-                    type="datetime-local"
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs font-black text-blue-600"
-                    value={newOrder.scheduledDate}
-                    onChange={e => setNewOrder({ ...newOrder, scheduledDate: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {/* Seção: Descrição */}
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">
-                  <i className="fa-solid fa-file-lines mr-1.5"></i>Relato do Cliente / Diagnóstico Inicial
-                </label>
-                <textarea
-                  required
-                  placeholder="Descreva o que foi solicitado, o problema reportado pelo cliente..."
-                  rows={4}
-                  className="w-full px-5 py-4 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm font-medium leading-relaxed bg-slate-50/50"
-                  value={newOrder.description}
-                  onChange={e => setNewOrder({ ...newOrder, description: e.target.value })}
-                />
-              </div>
-
-              {/* Seção: Anexos */}
-              {settings?.enableAttachments && (
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">
-                    <i className="fa-solid fa-paperclip mr-1.5"></i>Documentação Prévia (Opcional)
-                  </label>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {newOrder.attachments.map(att => (
-                      <div key={att.id} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 border border-slate-200">
-                        <i className="fa-solid fa-file text-blue-500"></i>
-                        <span className="truncate max-w-[100px]">{att.name}</span>
-                        <button type="button" onClick={() => removePendingAttachment(att.id)} className="text-red-500 hover:scale-125 transition-transform">
-                          <i className="fa-solid fa-circle-xmark"></i>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    multiple
-                    className="hidden"
-                    onChange={handleFileSelect}
-                    accept="image/*,.pdf,.doc,.docx"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full py-5 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-300 transition-all flex flex-col items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest bg-slate-50"
-                  >
-                    <i className="fa-solid fa-cloud-arrow-up text-2xl mb-1"></i>
-                    Enviar fotos ou documentos
-                  </button>
-                </div>
-              )}
-
-              {/* Botões */}
-              <div className="pt-4 flex gap-3 sticky bottom-0 bg-white pb-2">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="flex-1 py-4 border border-[var(--border-color)] rounded-2xl font-black text-[10px] uppercase tracking-widest text-[var(--text-secondary)] hover:bg-[var(--bg-main)] transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-[2] py-4 bg-[var(--blue-primary)] text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-blue-500/20 hover:bg-[var(--blue-hover)] btn-pill-hover active:scale-[0.98]"
-                >
-                  <i className="fa-solid fa-file-circle-check mr-2"></i>
-                  Gerar Ordem de Serviço
-                </button>
-              </div>
-            </form>
+            <div className="flex-1">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-0.5">Notificação do Sistema</p>
+              <p className="text-sm font-bold tracking-tight">{toast.message}</p>
+            </div>
+            <button onClick={() => setToast(null)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
+              <i className="fa-solid fa-xmark text-sm opacity-50"></i>
+            </button>
           </div>
         </div>
       )}
