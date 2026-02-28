@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { User, UserRole } from '../types';
+import { logService } from './logger';
 import { IAuthService } from './database.types';
 
 const SESSION_KEY = 'sistema_os_session';
@@ -182,7 +183,39 @@ export const authService: IAuthService = {
             }
         });
 
-        if (error) throw error;
-        return { user: data.user, password };
+        if (error) {
+            let errorMessage = error.message;
+            let fullDetails = null;
+
+            if (error.context && typeof error.context.json === 'function') {
+                try {
+                    const errBody = await error.context.json();
+                    fullDetails = errBody;
+                    if (errBody && errBody.error) {
+                        errorMessage = errBody.error;
+                    }
+                } catch (e) {
+                    // Ignore parse error
+                }
+            } else if (error.message.includes('non-2xx')) {
+                errorMessage = "Erro interno no servidor (A API não retornou sucesso). Verifique o console ou a aba de Logs.";
+            }
+
+            logService.addLog('error', `Falha ao cadastrar: ${errorMessage}`, {
+                originalError: error,
+                contextBody: fullDetails,
+                payloadSent: {
+                    email: userData.email,
+                    role: userData.role,
+                    company_id: userData.company_id
+                }
+            });
+
+            throw new Error(errorMessage);
+        }
+
+        logService.addLog('info', `Usuário criado com sucesso via adminCreateUser`, { email: userData.email });
+
+        return { user: data?.user || data, password };
     }
 };

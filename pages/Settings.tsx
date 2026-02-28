@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
+import { logService, LogEntry } from '../services/logger';
 import { UserRole, AppState, Company, ServiceOrder, User, Customer } from '../types';
 
 interface SettingsProps {
@@ -17,6 +18,8 @@ const Settings: React.FC<SettingsProps> = ({ company: initialCompany, onCompanyC
   const [newType, setNewType] = useState('');
   const [editingType, setEditingType] = useState<string | null>(null);
   const [editingTypeValue, setEditingTypeValue] = useState('');
+  const [systemLogs, setSystemLogs] = useState<LogEntry[]>([]);
+  const [expandedLogs, setExpandedLogs] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async () => {
@@ -25,6 +28,7 @@ const Settings: React.FC<SettingsProps> = ({ company: initialCompany, onCompanyC
       if (!user) return;
       const companyData = await dbService.getCompany(user.companyId);
       setCompany(companyData);
+      setSystemLogs(logService.getLogs());
     } catch (error) {
       console.error("Erro ao carregar configurações:", error);
     } finally {
@@ -575,6 +579,77 @@ const Settings: React.FC<SettingsProps> = ({ company: initialCompany, onCompanyC
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Área de Logs */}
+      <div className="saas-card p-8 md:p-10 mb-8 max-h-[500px] flex flex-col">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center text-xl shadow-sm border border-red-100">
+              <i className="fa-solid fa-bug"></i>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 leading-tight">Logs de Erros Locais</h2>
+              <p className="text-slate-500 text-xs font-medium">Histórico de erros ocorridos neste navegador</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { logService.clearLogs(); setSystemLogs([]); showToast('Logs limpos', 'success'); }}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors"
+          >
+            Limpar Logs
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar border border-slate-200 rounded-xl bg-slate-50 p-4">
+          {systemLogs.length === 0 ? (
+            <div className="text-center text-slate-400 py-10 font-bold text-sm">
+              Nenhum erro registrado neste dispositivo
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {systemLogs.map(log => {
+                const isExpanded = expandedLogs.includes(log.id);
+                return (
+                  <div key={log.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div
+                      className={`flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors ${isExpanded ? 'border-b border-slate-100' : ''}`}
+                      onClick={() => {
+                        setExpandedLogs(prev =>
+                          prev.includes(log.id) ? prev.filter(id => id !== log.id) : [...prev, log.id]
+                        );
+                      }}
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <span className={`px-2.5 py-1 rounded text-[10px] uppercase font-black tracking-widest text-white ${log.type === 'error' ? 'bg-red-500' : log.type === 'warn' ? 'bg-orange-500' : 'bg-blue-500'}`}>
+                          {log.type}
+                        </span>
+                        <span className="text-xs font-bold text-slate-800 line-clamp-1 flex-1">{log.message}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] text-slate-400 font-mono hidden sm:inline-block">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </span>
+                        {log.details && (
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform ${isExpanded ? 'rotate-180 bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-400'}`}>
+                            <i className="fa-solid fa-chevron-down text-[10px]"></i>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {log.details && isExpanded && (
+                      <div className="p-4 bg-slate-50">
+                        <pre className="text-[10px] text-slate-600 bg-white border border-slate-200 p-4 rounded-xl overflow-x-auto font-mono whitespace-pre-wrap">
+                          {JSON.stringify(log.details, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 

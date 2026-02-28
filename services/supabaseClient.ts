@@ -16,7 +16,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 try {
   if (supabaseUrl && supabaseAnonKey) {
-    supabase = createClient(supabaseUrl, supabaseAnonKey);
+    supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+      },
+    });
   } else {
     // Fallback to prevent white screen, but API calls will fail
     supabase = createClient('https://placeholder.supabase.co', 'placeholder');

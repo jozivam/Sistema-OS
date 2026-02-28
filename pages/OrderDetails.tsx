@@ -519,7 +519,7 @@ const OrderDetails: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
 
         {/* ════ COLUNA ESQUERDA — Tabela de Detalhes ════ */}
-        <div className="order-2 lg:order-1 lg:col-span-8 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="order-1 lg:col-span-8 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           {/* Número da OS */}
           <Row label="Número da OS">
             <span className="font-semibold text-blue-600">#{order.id.slice(-4)}</span>
@@ -653,7 +653,7 @@ const OrderDetails: React.FC = () => {
         </div>
 
         {/* ════ COLUNA DIREITA — Comentários ════ */}
-        <div className="order-1 lg:order-2 lg:col-span-4 flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="order-2 lg:col-span-4 flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
 
           {/* Título */}
           <div className="px-5 py-4 border-b border-slate-100 shrink-0">
