@@ -8,6 +8,7 @@ import { User, UserRole, Company } from './types';
 
 // Components
 import Layout from './components/Layout';
+import DevLayout from './components/developer/DevLayout';
 
 // Pages
 import Login from './pages/Login';
@@ -172,6 +173,23 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserCha
   const isAdmin = currentUser.role === UserRole.ADMIN;
   const isTrial = isTrialUser(currentUser);
 
+  if (isDev) {
+    return (
+      <DevLayout user={currentUser} onUserChange={onUserChange}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/developer" replace />} />
+          <Route path="/developer" element={<DeveloperPanel />} />
+          <Route path="/developer/pagamentos" element={<DeveloperPayments />} />
+          <Route path="/developer/configuracoes" element={<DeveloperSettings />} />
+          <Route path="/developer/empresa/:id" element={<CompanyManagement />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/relatorios" element={<Reports />} />
+          <Route path="*" element={<Navigate to="/developer" replace />} />
+        </Routes>
+      </DevLayout>
+    );
+  }
+
   return (
     <Layout
       user={currentUser}
@@ -180,45 +198,26 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserCha
       onCompanyChange={onCompanyChange}
     >
       <Routes>
-        <Route path="/" element={<Navigate to={isDev ? "/developer" : "/dashboard"} replace />} />
-
-        {/* ─── Rotas Desenvolvedor ─── */}
-        {isDev && (
-          <>
-            <Route path="/developer" element={<DeveloperPanel />} />
-            <Route path="/developer/pagamentos" element={<DeveloperPayments />} />
-            <Route path="/developer/configuracoes" element={<DeveloperSettings />} />
-            <Route path="/developer/empresa/:id" element={<CompanyManagement />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/relatorios" element={<Reports />} />
-          </>
-        )}
-
-        {/* ─── Rotas Normais + Trial ─── */}
-        {!isDev && (
-          <>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route
-              path="/chat"
-              element={company?.settings.enableChat ? <Chat company={company} /> : <Navigate to="/dashboard" replace />}
-            />
-            <Route path="/clientes" element={(isAdmin || isTrial) ? <Customers /> : <Navigate to="/dashboard" replace />} />
-            <Route path="/clientes/:id" element={(isAdmin || isTrial) ? <CustomerDetails /> : <Navigate to="/dashboard" replace />} />
-            <Route
-              path="/relatorios"
-              element={(isAdmin || isTrial) && company?.settings.enableAI ? <Reports /> : <Navigate to="/dashboard" replace />}
-            />
-            <Route path="/ordens" element={<Orders />} />
-            <Route path="/ordens/:id" element={<OrderDetails />} />
-            <Route path="/usuarios" element={(isAdmin || isTrial) ? <Users /> : <Navigate to="/dashboard" replace />} />
-            <Route
-              path="/configuracoes"
-              element={(isAdmin || isTrial) ? <Settings company={company} onCompanyChange={onCompanyChange} /> : <Navigate to="/dashboard" replace />}
-            />
-          </>
-        )}
-
-        <Route path="*" element={<Navigate to={isDev ? "/developer" : "/dashboard"} replace />} />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route
+          path="/chat"
+          element={company?.settings.enableChat ? <Chat company={company} /> : <Navigate to="/dashboard" replace />}
+        />
+        <Route path="/clientes" element={(isAdmin || isTrial) ? <Customers /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/clientes/:id" element={(isAdmin || isTrial) ? <CustomerDetails /> : <Navigate to="/dashboard" replace />} />
+        <Route
+          path="/relatorios"
+          element={(isAdmin || isTrial) && company?.settings.enableAI ? <Reports /> : <Navigate to="/dashboard" replace />}
+        />
+        <Route path="/ordens" element={<Orders />} />
+        <Route path="/ordens/:id" element={<OrderDetails />} />
+        <Route path="/usuarios" element={(isAdmin || isTrial) ? <Users /> : <Navigate to="/dashboard" replace />} />
+        <Route
+          path="/configuracoes"
+          element={(isAdmin || isTrial) ? <Settings company={company} onCompanyChange={onCompanyChange} /> : <Navigate to="/dashboard" replace />}
+        />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>
   );

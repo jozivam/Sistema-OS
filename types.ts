@@ -80,6 +80,7 @@ export interface Company {
   period: CompanyPeriod;
   monthlyFee: number;
   status: 'ACTIVE' | 'BLOCKED';
+  refundedAmount?: number;
   createdAt: string;
   expiresAt?: string;
   settings: SystemSettings;

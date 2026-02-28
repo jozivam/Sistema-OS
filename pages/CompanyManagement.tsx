@@ -45,6 +45,7 @@ const CompanyManagement: React.FC = () => {
     city: '',
     plan: CompanyPlan.OURO,
     monthlyFee: 0,
+    refundedAmount: 0,
     status: 'ACTIVE' as 'ACTIVE' | 'BLOCKED',
     expiresAt: '',
     createdAt: '',
@@ -87,6 +88,7 @@ const CompanyManagement: React.FC = () => {
           city: companyData.city || '',
           plan: companyData.plan,
           monthlyFee: companyData.monthlyFee,
+          refundedAmount: companyData.refundedAmount || 0,
           status: companyData.status,
           expiresAt: companyData.expiresAt ? companyData.expiresAt.slice(0, 10) : '',
           createdAt: companyData.createdAt ? companyData.createdAt.slice(0, 10) : new Date().toISOString().split('T')[0],
@@ -339,6 +341,22 @@ const CompanyManagement: React.FC = () => {
     }
   };
 
+  const handleToggleStatus = async () => {
+    if (!company) return;
+    const newStatus = company.status === 'ACTIVE' ? 'BLOCKED' : 'ACTIVE';
+    try {
+      await dbService.updateCompany(company.id, { status: newStatus } as Partial<Company>);
+      setCompany({ ...company, status: newStatus } as Company);
+      setToast({
+        message: `Sistema ${newStatus === 'ACTIVE' ? 'desbloqueado' : 'bloqueado'} com sucesso!`,
+        type: newStatus === 'ACTIVE' ? 'success' : 'error'
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+      setToast({ message: 'Erro técnico ao alterar status.', type: 'error' });
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       {toast && (
@@ -403,6 +421,16 @@ const CompanyManagement: React.FC = () => {
             className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
           >
             Novo Usuário
+          </button>
+          <button
+            onClick={handleToggleStatus}
+            className={`border-2 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center gap-2 ${company.status === 'ACTIVE'
+              ? 'bg-white border-orange-500 text-orange-600 shadow-orange-500/10 hover:bg-orange-50'
+              : 'bg-white border-green-500 text-green-600 shadow-green-500/10 hover:bg-green-50'
+              }`}
+          >
+            <i className={`fa-solid ${company.status === 'ACTIVE' ? 'fa-lock' : 'fa-lock-open'}`}></i>
+            {company.status === 'ACTIVE' ? 'Bloquear Cliente' : 'Desbloquear Cliente'}
           </button>
           <button
             onClick={() => setDeleteCompanyModalOpen(true)}
@@ -836,6 +864,15 @@ const CompanyManagement: React.FC = () => {
                       <option value="ACTIVE">ATIVO (LIBERADO)</option>
                       <option value="BLOCKED">BLOQUEADO (SUSPENSO)</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Valor Reembolsado (R$)</label>
+                    <input
+                      type="number" step="0.01"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-sm text-red-600"
+                      value={companyFormData.refundedAmount || ''}
+                      onChange={e => setCompanyFormData({ ...companyFormData, refundedAmount: parseFloat(e.target.value) || 0 })}
+                    />
                   </div>
                 </div>
 

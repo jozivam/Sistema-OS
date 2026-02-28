@@ -1,41 +1,116 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { dbService } from '../../services/dbService';
+import { authService } from '../../services/authService';
 import { ChatMessage, User } from '../../types';
 
-interface SupportTabProps {
-    channels: any[];
-    selectedChannelId: string | null;
-    onSelectChannel: (id: string) => void;
-    messages: ChatMessage[];
-    currentUser: User | null;
-    replyText: string;
-    setReplyText: (text: string) => void;
-    onSendReply: (e: React.FormEvent) => void;
-    searchTerm: string;
-    setSearchTerm: (term: string) => void;
-    chatEndRef: React.RefObject<HTMLDivElement>;
+interface SupportChannel {
+    companyId: string;
+    companyName: string;
+    lastMessage: string;
+    timestamp: string;
 }
 
-const SupportTab: React.FC<SupportTabProps> = ({
-    channels,
-    selectedChannelId,
-    onSelectChannel,
-    messages,
-    currentUser,
-    replyText,
-    setReplyText,
-    onSendReply,
-    searchTerm,
-    setSearchTerm,
-    chatEndRef
-}) => {
+const SupportTab: React.FC = () => {
+    const [channels, setChannels] = useState<SupportChannel[]>([]);
+    const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [replyText, setReplyText] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [loading, setLoading] = useState(true);
+    const chatEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const loadInitialData = async () => {
+            try {
+                const user = await authService.getCurrentUser();
+                setCurrentUser(user);
+
+                const loadedChannels = await dbService.getAllSupportChannels();
+                setChannels(loadedChannels || []);
+            } catch (error) {
+                console.error("Erro ao carregar canais:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadInitialData();
+    }, []);
+
+    useEffect(() => {
+        if (!selectedChannelId) return;
+
+        const loadMessages = async () => {
+            try {
+                const msgs = await dbService.getSupportMessages(selectedChannelId);
+                setMessages(msgs || []);
+                setTimeout(() => {
+                    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+            } catch (error) {
+                console.error("Erro ao carregar mensagens:", error);
+            }
+        };
+
+        loadMessages();
+
+        // Polling para mensagens novas (simulando webhooks/realtime para o admin)
+        const interval = setInterval(loadMessages, 5000);
+        return () => clearInterval(interval);
+    }, [selectedChannelId]);
+
+    const handleSendReply = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!replyText.trim() || !selectedChannelId || !currentUser) return;
+
+        try {
+            const newMsg = {
+                companyId: selectedChannelId,
+                senderId: currentUser.id,
+                senderName: 'Suporte Técnico',
+                receiverId: 'admin',
+                channelId: `support_${selectedChannelId}`,
+                text: replyText
+            };
+
+            await dbService.sendMessage(newMsg);
+
+            // Update UI optimistically
+            const optimisticMsg = { ...newMsg, id: Date.now().toString(), timestamp: new Date().toISOString() };
+            setMessages(prev => [...prev, optimisticMsg as ChatMessage]);
+            setReplyText('');
+
+            setChannels(prev => prev.map(c =>
+                c.companyId === selectedChannelId
+                    ? { ...c, lastMessage: replyText, timestamp: new Date().toISOString() }
+                    : c
+            ));
+
+            setTimeout(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+        } catch (error) {
+            console.error("Erro ao enviar resposta:", error);
+            alert("Erro ao enviar mensagem.");
+        }
+    };
+
     const filteredChannels = channels.filter(c =>
         c.companyName.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <i className="fa-solid fa-spinner fa-spin text-3xl text-indigo-500"></i>
+            </div>
+        );
+    }
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[700px] animate-in slide-in-from-bottom-4 duration-500">
             {/* Channel List */}
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+            <div className="bg-white rounded-[1.25rem] shadow-sm border border-slate-200/60 flex flex-col overflow-hidden">
                 <div className="p-6 border-b border-slate-100 bg-slate-50/50">
                     <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-3">Atendimento Proativo</h3>
                     <div className="relative">
@@ -59,7 +134,7 @@ const SupportTab: React.FC<SupportTabProps> = ({
                         filteredChannels.map(channel => (
                             <button
                                 key={channel.companyId}
-                                onClick={() => onSelectChannel(channel.companyId)}
+                                onClick={() => setSelectedChannelId(channel.companyId)}
                                 className={`w-full p-4 rounded-2xl text-left transition-all flex items-center gap-4 mb-2 ${selectedChannelId === channel.companyId ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'hover:bg-slate-50'}`}
                             >
                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 ${selectedChannelId === channel.companyId ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-500'}`}>
@@ -85,7 +160,7 @@ const SupportTab: React.FC<SupportTabProps> = ({
             </div>
 
             {/* Chat Area */}
-            <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
+            <div className="lg:col-span-2 bg-white rounded-[1.25rem] shadow-sm border border-slate-200/60 flex flex-col overflow-hidden relative">
                 {selectedChannelId ? (
                     <>
                         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -135,7 +210,7 @@ const SupportTab: React.FC<SupportTabProps> = ({
                         </div>
 
                         <div className="p-6 bg-white border-t border-slate-100">
-                            <form onSubmit={onSendReply} className="flex gap-3">
+                            <form onSubmit={handleSendReply} className="flex gap-3">
                                 <input
                                     type="text"
                                     placeholder="DIGITE SUA RESPOSTA..."

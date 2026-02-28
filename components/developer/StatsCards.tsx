@@ -7,50 +7,62 @@ interface StatsCardsProps {
         blocked: number;
         mrr: number;
     };
+    showValues: boolean;
 }
 
-const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
+const StatsCards: React.FC<StatsCardsProps> = ({ stats, showValues }) => {
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex overflow-hidden group">
-                <div className="w-20 bg-emerald-500 flex items-center justify-center text-white text-3xl">
-                    <i className="fa-solid fa-money-bill-trend-up"></i>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Vendas Totais / MRR */}
+            <div className="bg-white rounded-[1.25rem] border border-slate-200/60 p-5 flex items-center shadow-sm">
+                <div className="w-[52px] h-[52px] rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
+                    <i className="fa-solid fa-money-bill-wave text-xl text-emerald-500"></i>
                 </div>
-                <div className="p-6 flex-1 text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">MRR (MENSAL)</p>
-                    <h3 className="text-2xl font-black text-slate-900 leading-none">
-                        {stats.mrr.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </h3>
-                </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex overflow-hidden">
-                <div className="w-20 bg-blue-500 flex items-center justify-center text-white text-3xl">
-                    <i className="fa-solid fa-ban"></i>
-                </div>
-                <div className="p-6 flex-1 text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">BLOQUEADOS/INAT.</p>
-                    <h3 className="text-2xl font-black text-slate-900 leading-none">{stats.blocked}</h3>
+                <div className="ml-4 truncate">
+                    <h4 className="text-[13px] font-semibold text-slate-500 truncate">Receita Recorrente</h4>
+                    <p className="text-2xl font-bold text-slate-900 mt-1 flex items-baseline gap-1">
+                        {showValues ? stats.mrr.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ ****'}
+                    </p>
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex overflow-hidden">
-                <div className="w-20 bg-orange-500 flex items-center justify-center text-white text-3xl">
-                    <i className="fa-solid fa-building-circle-check"></i>
+            {/* Total Orders / Empresas */}
+            <div className="bg-white rounded-[1.25rem] border border-slate-200/60 p-5 flex items-center shadow-sm">
+                <div className="w-[52px] h-[52px] rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
+                    <i className="fa-solid fa-cart-shopping text-xl"></i>
                 </div>
-                <div className="p-6 flex-1 text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">EMPRESAS ATIVAS</p>
-                    <h3 className="text-2xl font-black text-slate-900 leading-none">{stats.active}</h3>
+                <div className="ml-4 truncate">
+                    <h4 className="text-[13px] font-semibold text-slate-500 truncate">Total de Sistemas</h4>
+                    <p className="text-2xl font-bold text-slate-900 mt-1 flex items-baseline gap-1">
+                        {showValues ? stats.total.toLocaleString() : '****'}
+                    </p>
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex overflow-hidden">
-                <div className="w-20 bg-rose-500 flex items-center justify-center text-white text-3xl">
-                    <i className="fa-solid fa-chart-pie"></i>
+            {/* Customers / Ativas */}
+            <div className="bg-white rounded-[1.25rem] border border-slate-200/60 p-5 flex items-center shadow-sm">
+                <div className="w-[52px] h-[52px] rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
+                    <i className="fa-solid fa-users text-xl text-blue-500"></i>
                 </div>
-                <div className="p-6 flex-1 text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">TOTAL EMPRESAS</p>
-                    <h3 className="text-2xl font-black text-slate-900 leading-none">{stats.total}</h3>
+                <div className="ml-4 truncate">
+                    <h4 className="text-[13px] font-semibold text-slate-500 truncate">Clientes Ativos</h4>
+                    <p className="text-2xl font-bold text-slate-900 mt-1 flex items-baseline gap-1">
+                        {showValues ? stats.active.toLocaleString() : '****'}
+                    </p>
+                </div>
+            </div>
+
+            {/* Low Stock / Bloqueados */}
+            <div className="bg-white rounded-[1.25rem] border border-slate-200/60 p-5 flex items-center shadow-sm">
+                <div className="w-[52px] h-[52px] rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center shrink-0 relative overflow-hidden">
+                    <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500"></div>
+                    <i className="fa-solid fa-circle-exclamation text-xl"></i>
+                </div>
+                <div className="ml-4 truncate">
+                    <h4 className="text-[13px] font-semibold text-slate-500 truncate">Inadimplentes</h4>
+                    <p className="text-2xl font-bold text-slate-900 mt-1 flex items-baseline gap-1">
+                        {showValues ? stats.blocked.toLocaleString() : '****'}
+                    </p>
                 </div>
             </div>
         </div>
