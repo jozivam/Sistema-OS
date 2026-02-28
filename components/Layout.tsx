@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { User, UserRole, Company, AppNotification, NotificationType } from '../types';
+import { User, UserRole, Company, AppNotification, NotificationType, Customer, ServiceOrder, OrderStatus } from '../types';
 import { authService } from '../services/authService';
 import { dbService } from '../services/dbService';
-import { isTrialUser, cleanupTrial } from '../services/trialService';
-import { useEffect } from 'react';
+import { isTrialUser, cleanupTrial, getTrialGlobalSearch } from '../services/trialService';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -20,8 +19,56 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ customers: Customer[], orders: ServiceOrder[], users: User[] }>({ customers: [], orders: [], users: [] });
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Handle outside click for search dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Debounced Search Effect
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (!searchQuery.trim()) {
+        setSearchResults({ customers: [], orders: [], users: [] });
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        if (isTrial) {
+          const results = getTrialGlobalSearch(searchQuery);
+          setSearchResults(results);
+        } else if (user?.companyId) {
+          const results = await dbService.globalSearch(user.companyId, searchQuery, user.role);
+          setSearchResults(results);
+        }
+      } catch (error) {
+        console.error("Erro na busca global:", error);
+      } finally {
+        setIsSearching(false);
+        setShowSearchDropdown(true);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, isTrial, user?.companyId, user?.role]);
 
   useEffect(() => {
     if (user && user.companyId) {
@@ -309,14 +356,106 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
               </h2>
             </div>
 
-            <div className="flex-1 max-w-lg px-8 hidden lg:block">
+            <div className="flex-1 max-w-lg px-8 hidden lg:block" ref={searchRef}>
               <div className="relative">
-                <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
+                <i className={`fa-solid ${isSearching ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'} absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]`}></i>
                 <input
                   type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (e.target.value.trim().length > 0) setShowSearchDropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (searchQuery.trim().length > 0) setShowSearchDropdown(true);
+                  }}
                   placeholder="Pesquisar em todo o sistema..."
                   className="w-full bg-white border border-[var(--border-color)] rounded-full py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--blue-primary)] text-[var(--text-primary)] shadow-sm transition-shadow"
                 />
+
+                {/* Dropdown de Resultados */}
+                {showSearchDropdown && searchQuery.trim() && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="max-h-[400px] overflow-y-auto custom-scrollbar p-2">
+                      {/* Lista de Resultados */}
+                      {isSearching && (
+                        <div className="p-4 text-center text-sm text-[var(--text-muted)]">
+                          <i className="fa-solid fa-spinner fa-spin mr-2"></i>Buscando...
+                        </div>
+                      )}
+                      {!isSearching && searchResults.orders.length === 0 && searchResults.customers.length === 0 && searchResults.users.length === 0 && (
+                        <div className="p-8 text-center text-slate-400">
+                          <i className="fa-solid fa-magnifying-glass text-3xl mb-3 opacity-20"></i>
+                          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">Nenhum resultado encontrado</p>
+                          <p className="text-xs text-[var(--text-muted)]">Tente buscar por termos diferentes</p>
+                        </div>
+                      )}
+                      {!isSearching && (
+                        <>
+                          {searchResults.orders.length > 0 && (
+                            <div className="mb-2">
+                              <div className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-lg mb-1">
+                                Ordens de Serviço ({searchResults.orders.length})
+                              </div>
+                              {searchResults.orders.map(order => (
+                                <div key={order.id} onClick={() => { setShowSearchDropdown(false); navigate(`/ordens/${order.id}`); }} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors flex items-center justify-between group">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                                      <i className="fa-solid fa-file-invoice"></i>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-semibold text-[var(--text-primary)] group-hover:text-blue-600 transition-colors">#{order.id.slice(-6).toUpperCase()} - {order.customerName}</p>
+                                      <p className="text-xs text-[var(--text-muted)] mt-0.5">{order.type}</p>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] whitespace-nowrap font-bold px-2 py-1 rounded bg-slate-100 text-slate-600 uppercase">
+                                    {order.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {searchResults.customers.length > 0 && (
+                            <div className="mb-2">
+                              <div className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-lg mb-1">
+                                Clientes ({searchResults.customers.length})
+                              </div>
+                              {searchResults.customers.map(customer => (
+                                <div key={customer.id} onClick={() => { setShowSearchDropdown(false); navigate(`/clientes?search=${encodeURIComponent(customer.name)}`); }} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors flex items-center gap-3 group">
+                                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                    <i className="fa-solid fa-users"></i>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-[var(--text-primary)] group-hover:text-blue-600 transition-colors">{customer.name}</p>
+                                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{customer.city || 'Sem cidade'}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {searchResults.users.length > 0 && (
+                            <div>
+                              <div className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-lg mb-1">
+                                Usuários ({searchResults.users.length})
+                              </div>
+                              {searchResults.users.map(user => (
+                                <div key={user.id} onClick={() => { setShowSearchDropdown(false); navigate(`/usuarios`); }} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors flex items-center gap-3 group">
+                                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                    <i className="fa-solid fa-user-gear"></i>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-[var(--text-primary)] group-hover:text-blue-600 transition-colors">{user.name}</p>
+                                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{user.email}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

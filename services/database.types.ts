@@ -60,6 +60,9 @@ export interface IDatabaseService {
     forceLogoutUser(userId: string): Promise<void>;
     getActiveSessionUsers(companyId?: string): Promise<User[]>;
 
+    // Pesquisa Global
+    globalSearch(companyId: string, query: string, userRole: string): Promise<{ customers: Customer[], orders: ServiceOrder[], users: User[] }>;
+
     // Métodos de Upsert (Restauração)
     upsertCompanies(companies: Company[]): Promise<void>;
     upsertUsers(users: User[]): Promise<void>;

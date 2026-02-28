@@ -395,3 +395,42 @@ export function isActiveTrial(): boolean {
 export function getCurrentTrialRoleLabel(): 'admin' | 'tech' {
     return (sessionStorage.getItem(TRIAL_ROLE_KEY) as 'admin' | 'tech') || 'admin';
 }
+
+export function getTrialGlobalSearch(query: string): { customers: Customer[], orders: ServiceOrder[], users: User[] } {
+    if (!query || query.trim().length === 0) {
+        return { customers: [], orders: [], users: [] };
+    }
+
+    const q = query.toLowerCase().trim();
+
+    // Filtro de Clientes
+    const customers = getTrialCustomers().filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.phone.toLowerCase().includes(q) ||
+        c.city?.toLowerCase().includes(q)
+    ).slice(0, 5);
+
+    // Filtro de Ordens
+    const orders = getTrialOrders().filter(o =>
+        o.id.toLowerCase().includes(q) ||
+        o.type.toLowerCase().includes(q) ||
+        (o.description && o.description.toLowerCase().includes(q)) ||
+        o.customerName.toLowerCase().includes(q)
+    ).slice(0, 5);
+
+    // Filtro de Usuários (Trial tem admin e tech fixos)
+    const session = sessionStorage.getItem(TRIAL_SESSION_KEY);
+    let users: User[] = [];
+    if (session) {
+        try {
+            const { admin, tech } = JSON.parse(session);
+            users = [admin, tech].filter(u =>
+                u.name.toLowerCase().includes(q) ||
+                u.email.toLowerCase().includes(q)
+            ).slice(0, 5);
+        } catch { }
+    }
+
+    return { customers, orders, users };
+}
+

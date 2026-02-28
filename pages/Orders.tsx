@@ -416,6 +416,19 @@ const Orders: React.FC = () => {
         setCustomers(trialCustomers);
         setUsers(trialUsers);
         setCompany(trialCompany);
+      } else if (user.companyId) {
+        const companyIdToLoad = (user.role === UserRole.DEVELOPER) ? 'dev-corp' : user.companyId;
+        const [fetchedOrders, fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
+          dbService.getOrders(companyIdToLoad, (user.role === UserRole.TECH) ? user.id : undefined),
+          dbService.getCustomers(companyIdToLoad),
+          dbService.getUsers(companyIdToLoad),
+          dbService.getCompany(companyIdToLoad)
+        ]);
+
+        setOrders(fetchedOrders);
+        setCustomers(fetchedCustomers);
+        setUsers(fetchedUsers);
+        setCompany(fetchedCompany);
       }
     } catch (error) {
       console.error("Erro ao carregar dados de ordens:", error);

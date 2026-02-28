@@ -751,4 +751,61 @@ Este é um relatório gerado localmente pelo ambiente de testes (Demonstração)
     async getActiveSessionUsers(_companyId?: string): Promise<User[]> {
         return Promise.resolve([]);
     },
+
+    // === Pesquisa Global ===
+    async globalSearch(companyId: string, query: string, userRole: string): Promise<{ customers: Customer[], orders: ServiceOrder[], users: User[] }> {
+        if (!query || query.trim().length === 0) {
+            return { customers: [], orders: [], users: [] };
+        }
+
+        const safeQuery = `%${query.trim()}%`;
+        const isAdminOrDev = ['Administrador', 'Desenvolvedor'].includes(userRole);
+        const isTech = userRole === 'Técnico' || userRole === 'Tecnico';
+
+        // Arrays de queries independentes baseados em regras
+        const fetchCustomers = supabase
+            .from('customers')
+            .select('*')
+            .eq('company_id', companyId)
+            // No PostgREST .or() recebe uma string no formato "coluna.op.valor,coluna2.op.valor"
+            // Sem as aspas duplas adicionais dentro do valor, apenas a url encoding
+            .or(`name.ilike.%${query.trim()}%,phone.ilike.%${query.trim()}%,city.ilike.%${query.trim()}%`)
+            .limit(5);
+
+        // Ordens: Se admin vê todas da empresa, se técnico vê apenas as atribuídas a ele
+        const fetchOrders = supabase
+            .from('service_orders')
+            .select(`
+                *,
+                tech:users!tech_id(name),
+                customer:customers!inner(id, name, city)
+            `)
+            .eq('company_id', companyId)
+            // Filtros de or: busca direto na ordem. Não usaremos id.ilike pois se for UUID o PostgREST retorna 400.
+            .or(`type.ilike.%${query.trim()}%,description.ilike.%${query.trim()}%`)
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        let fetchUsers: any = Promise.resolve<{ data: any[], error: any }>({ data: [], error: null });
+        if (isAdminOrDev) {
+            fetchUsers = supabase
+                .from('users')
+                .select('*')
+                .eq('company_id', companyId)
+                .or(`name.ilike.%${query.trim()}%,email.ilike.%${query.trim()}%`)
+                .limit(5);
+        }
+
+        const [custRes, ordRes, usrRes] = await Promise.all([fetchCustomers, fetchOrders, fetchUsers]);
+
+        if (custRes.error) console.error("Error fetching customers for global search:", custRes.error);
+        if (ordRes.error) console.error("Error fetching orders for global search:", ordRes.error);
+        if (usrRes.error) console.error("Error fetching users for global search:", usrRes.error);
+
+        return {
+            customers: (custRes.data || []).map(mapCustomer),
+            orders: (ordRes.data || []).map(mapOrder),
+            users: (usrRes.data || []).map(mapUser)
+        };
+    },
 };
