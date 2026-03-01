@@ -122,6 +122,13 @@ const Users: React.FC = () => {
         setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
         setToast({ message: "Usuário atualizado com sucesso!", type: 'success' });
         setTimeout(() => setToast(null), 3000);
+
+        if (editingUserId === currentUser?.id) {
+          setTimeout(async () => {
+            await authService.signOut();
+            window.location.href = '/';
+          }, 1500);
+        }
       } else {
         setLoading(true);
         // Automação: Cria no Auth e na Tabela Pública via Edge Function

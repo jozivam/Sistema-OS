@@ -69,6 +69,8 @@ const OrderDetails: React.FC = () => {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   const [attachmentToDelete, setAttachmentToDelete] = useState<string | null>(null);
+  const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
+  const [previewAttachment, setPreviewAttachment] = useState<OrderAttachment | null>(null);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -392,26 +394,43 @@ const OrderDetails: React.FC = () => {
   const confirmDeleteAttachment = async () => {
     if (!attachmentToDelete || !order) return;
     const currentAttachments = order.attachments || [];
-    const updatedAttachments = currentAttachments.filter(a => a.id !== attachmentToDelete);
+    let updatedAttachments = [];
+
+    if (attachmentToDelete === 'bulk') {
+      updatedAttachments = currentAttachments.filter(a => !selectedAttachments.includes(a.id));
+      setSelectedAttachments([]);
+    } else {
+      updatedAttachments = currentAttachments.filter(a => a.id !== attachmentToDelete);
+    }
+
     await persistChanges({ ...order, attachments: updatedAttachments });
     setAttachmentToDelete(null);
-    setToast({ message: 'Arquivo removido!', type: 'success' });
+    setToast({ message: attachmentToDelete === 'bulk' ? 'Arquivos selecionados removidos!' : 'Arquivo removido!', type: 'success' });
   };
 
-  const handleDownloadAll = async () => {
+  const handleDownloadSelected = async () => {
     const currentAttachments = order.attachments || [];
-    if (currentAttachments.length === 0) return;
+    const attsToDownload = selectedAttachments.length > 0
+      ? currentAttachments.filter(a => selectedAttachments.includes(a.id))
+      : currentAttachments;
+
+    if (attsToDownload.length === 0) return;
+
     try {
       const JSZip = (window as any).JSZip;
       const saveAs = (window as any).saveAs;
       if (!JSZip || !saveAs) return;
       const zip = new JSZip();
-      currentAttachments.forEach((att) => {
+      attsToDownload.forEach((att) => {
         const base64Data = att.data.split(',')[1] || att.data;
         zip.file(att.name, base64Data, { base64: true });
       });
       const content = await zip.generateAsync({ type: 'blob' });
       saveAs(content, `OS-${order.id.slice(-4)}-anexos.zip`);
+
+      // Auto-clear selection after download
+      if (selectedAttachments.length > 0) setSelectedAttachments([]);
+      setToast({ message: 'Download iniciado!', type: 'success' });
     } catch (error) { console.error(error); }
   };
 
@@ -609,31 +628,96 @@ const OrderDetails: React.FC = () => {
           {/* Anexos */}
           {settings?.enableAttachments && (
             <Row label="Anexos">
-              <div className="flex flex-wrap gap-2 items-center">
-                {order.attachments?.map((att: OrderAttachment) => (
-                  <div key={att.id} className="relative group w-14 h-14 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shadow-sm">
-                    {att.mimeType.startsWith('image/') ? (
-                      <img src={att.data} className="w-full h-full object-cover" alt={att.name} />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <i className={`fa-solid ${getFileIcon(att.mimeType)} text-lg text-slate-400`}></i>
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-2 mb-1 border-b border-slate-100 pb-2 flex-wrap items-center">
+                  <button
+                    onClick={() => {
+                      const currentAttachments = order.attachments || [];
+                      if (selectedAttachments.length === currentAttachments.length && currentAttachments.length > 0) {
+                        setSelectedAttachments([]);
+                      } else {
+                        setSelectedAttachments(currentAttachments.map(a => a.id));
+                      }
+                    }}
+                    className="bg-slate-50 text-slate-600 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-slate-100 transition-colors mr-2"
+                  >
+                    <i className={`fa-regular ${selectedAttachments.length === (order.attachments || []).length && (order.attachments || []).length > 0 ? 'fa-square-check' : 'fa-square'}`}></i> Marcar Todos
+                  </button>
+
+                  {selectedAttachments.length > 0 && (
+                    <>
+                      <button onClick={handleDownloadSelected} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-blue-100 transition-colors">
+                        <i className="fa-solid fa-download"></i> Baixar ({selectedAttachments.length})
+                      </button>
+                      {!isLocked && (
+                        <button onClick={() => handleDeleteAttachment('bulk')} className="bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-rose-100 transition-colors">
+                          <i className="fa-solid fa-trash"></i> Excluir ({selectedAttachments.length})
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-3 items-center">
+                  {visibleAttachments.map((att: OrderAttachment) => (
+                    <div key={att.id} className="relative group flex flex-col items-center gap-1.5 w-16">
+                      <div className="relative w-16 h-16 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 shadow-sm cursor-pointer group-hover:border-blue-300 transition-colors" onClick={() => setPreviewAttachment(att)}>
+                        {att.mimeType.startsWith('image/') ? (
+                          <img src={att.data} className="w-full h-full object-cover" alt={att.name} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-white">
+                            <i className={`fa-solid ${getFileIcon(att.mimeType)} text-2xl text-slate-400`}></i>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <i className="fa-solid fa-eye text-white bg-slate-900/50 w-7 h-7 rounded-full flex items-center justify-center text-[10px]"></i>
+                        </div>
                       </div>
-                    )}
-                    <div className="absolute inset-0 bg-slate-900/70 flex gap-1 justify-center items-center opacity-0 group-hover:opacity-100 transition-all">
-                      <a href={att.data} download={att.name} className="w-5 h-5 bg-white rounded flex items-center justify-center text-blue-600"><i className="fa-solid fa-download text-[9px]"></i></a>
-                      {!isLocked && <button onClick={() => handleDeleteAttachment(att.id)} className="w-5 h-5 bg-white rounded flex items-center justify-center text-rose-500"><i className="fa-solid fa-trash text-[9px]"></i></button>}
+
+                      <div className="flex items-center w-full justify-between gap-1 px-1">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 text-blue-600 rounded bg-slate-50 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                          checked={selectedAttachments.includes(att.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedAttachments([...selectedAttachments, att.id]);
+                            else setSelectedAttachments(selectedAttachments.filter(id => id !== att.id));
+                          }}
+                        />
+                        <button onClick={() => { setSelectedAttachments([att.id]); setTimeout(handleDownloadSelected, 50) }} className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors"><i className="fa-solid fa-download text-[10px]"></i></button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {(order.attachments || []).length === 0 && <span className="text-xs text-slate-400 italic">Nenhum arquivo</span>}
-                {!isLocked && (
-                  <>
-                    <input type="file" ref={fileInputRef} multiple className="hidden" onChange={handleFileUpload} />
-                    <button onClick={() => fileInputRef.current?.click()} className="w-9 h-9 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-300 transition-colors">
-                      {isUploading ? <i className="fa-solid fa-spinner fa-spin text-xs"></i> : <i className="fa-solid fa-plus text-xs"></i>}
+                  ))}
+
+                  {attachments.length === 0 && <span className="text-xs text-slate-400 italic">Nenhum arquivo</span>}
+
+                  {!showAllAttachments && attachments.length > 5 && (
+                    <button onClick={() => setShowAllAttachments(true)} className="relative w-16 h-16 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors flex items-center justify-center mb-6 shadow-sm group">
+                      <div className="flex flex-col items-center text-slate-500 group-hover:text-blue-600 transition-colors">
+                        <i className="fa-solid fa-layer-group text-lg mb-1"></i>
+                        <span className="text-[10px] font-black uppercase">+{attachments.length - 5}</span>
+                      </div>
                     </button>
-                  </>
-                )}
+                  )}
+
+                  {showAllAttachments && attachments.length > 5 && (
+                    <button onClick={() => setShowAllAttachments(false)} className="relative w-16 h-16 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors flex items-center justify-center mb-6 shadow-sm group">
+                      <div className="flex flex-col items-center text-slate-500 group-hover:text-blue-600 transition-colors">
+                        <i className="fa-solid fa-chevron-up text-lg mb-1"></i>
+                        <span className="text-[9px] font-black uppercase">Ver Menos</span>
+                      </div>
+                    </button>
+                  )}
+
+                  {!isLocked && (
+                    <div className="flex items-center ml-2 mb-6">
+                      <input type="file" ref={fileInputRef} multiple className="hidden" onChange={handleFileUpload} />
+                      <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-300 hover:bg-slate-50 transition-colors shadow-sm">
+                        {isUploading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up text-xl"></i>}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </Row>
           )}
@@ -758,6 +842,47 @@ const OrderDetails: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Preview ── */}
+      {previewAttachment && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex flex-col items-center justify-center p-4">
+          {/* Topbar do Modal */}
+          <div className="w-full max-w-5xl flex justify-between items-center mb-4 text-white">
+            <div className="flex items-center gap-3">
+              <i className={`fa-solid ${getFileIcon(previewAttachment.mimeType)} text-2xl`}></i>
+              <div>
+                <h3 className="font-bold">{previewAttachment.name}</h3>
+                <p className="text-xs text-slate-300">{(previewAttachment.size / 1024).toFixed(1)} KB • {new Date(previewAttachment.createdAt).toLocaleDateString('pt-BR')}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <a href={previewAttachment.data} download={previewAttachment.name} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                <i className="fa-solid fa-download"></i>
+              </a>
+              <button onClick={() => setPreviewAttachment(null)} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="w-full max-w-5xl flex-1 max-h-[80vh] bg-white rounded-2xl overflow-hidden flex items-center justify-center relative shadow-2xl">
+            {previewAttachment.mimeType.startsWith('image/') ? (
+              <img src={previewAttachment.data} alt={previewAttachment.name} className="max-w-full max-h-full object-contain" />
+            ) : previewAttachment.mimeType === 'application/pdf' ? (
+              <iframe src={previewAttachment.data} className="w-full h-full border-0" title={previewAttachment.name} />
+            ) : (
+              <div className="text-center p-8 bg-slate-50 flex flex-col items-center justify-center w-full h-full">
+                <i className={`fa-solid ${getFileIcon(previewAttachment.mimeType)} text-6xl text-slate-300 mb-4`}></i>
+                <p className="text-slate-500 font-semibold mb-2">Visualização não disponível para este formato ({previewAttachment.mimeType})</p>
+                <a href={previewAttachment.data} download={previewAttachment.name} className="text-blue-600 hover:underline font-bold text-sm">
+                  Baixar o Arquivo
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}

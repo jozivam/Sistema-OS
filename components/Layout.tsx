@@ -352,7 +352,20 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
           <header className="hidden md:flex h-20 px-8 items-center justify-between shrink-0 bg-[var(--bg-main)] border-b border-[var(--border-color)]/50">
             <div className="flex-1 flex items-center gap-4">
               <h2 className="text-xl font-bold text-[var(--text-primary)] capitalize tracking-tight">
-                {location.pathname.split('/')[1]?.replace('-', ' ') || 'Dashboard'}
+                {(() => {
+                  const path = location.pathname.split('/')[1];
+                  const titles: Record<string, string> = {
+                    dashboard: 'Painel',
+                    chat: 'Mensagens',
+                    clientes: 'Clientes',
+                    ordens: 'Ordens de Serviço',
+                    usuarios: 'Usuários',
+                    relatorios: 'Relatórios',
+                    configuracoes: 'Configurações',
+                    developer: 'Painel do Desenvolvedor'
+                  };
+                  return titles[path] || (path?.replace('-', ' ')) || 'Painel';
+                })()}
               </h2>
             </div>
 

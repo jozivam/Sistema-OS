@@ -25,7 +25,7 @@ const DevLayout: React.FC<DevLayoutProps> = ({ children, user, onUserChange }) =
   };
 
   const navItems = [
-    { path: '/developer', label: 'Dashboard', icon: 'fa-chart-pie' },
+    { path: '/developer', label: 'Painel', icon: 'fa-chart-pie' },
     { path: '/developer?tab=support', label: 'Atendimentos', icon: 'fa-headset' },
     { path: '/developer/pagamentos', label: 'Assinaturas', icon: 'fa-file-invoice-dollar' },
     { path: '/developer?tab=logs', label: 'Logs Locais', icon: 'fa-clipboard-list' }

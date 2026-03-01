@@ -32,6 +32,7 @@ const Customers: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [openOSNow, setOpenOSNow] = useState(false);
+  const [displayedCount, setDisplayedCount] = useState(10);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   // ── Carregar dados ────────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ const Customers: React.FC = () => {
 
   const uniqueCities = Array.from(new Set(customers.map(c => c.city).filter(Boolean))).sort();
 
-  const filteredCustomers = customers.filter(c => {
+  const filteredCustomersAll = customers.filter(c => {
     const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||
@@ -145,6 +146,8 @@ const Customers: React.FC = () => {
     const matchesCity = !selectedCity || c.city === selectedCity;
     return matchesSearch && matchesCity;
   });
+
+  const filteredCustomers = filteredCustomersAll.slice(0, displayedCount);
 
   const handleOpenNewModal = () => {
     setEditingCustomer(null);
@@ -429,144 +432,153 @@ const Customers: React.FC = () => {
               )}
             </tbody>
           </table>
+          {displayedCount < filteredCustomersAll.length && (
+            <div className="p-4 border-t border-[var(--border-color)] flex justify-center bg-white">
+              <button onClick={() => setDisplayedCount(prev => prev + 10)} className="text-[var(--blue-primary)] px-6 py-2 flex items-center gap-2 rounded-full font-bold hover:bg-blue-50 transition-colors text-sm">
+                <i className="fa-solid fa-chevron-down"></i> Mostrar mais clientes
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Modal Criar / Editar Cliente ─────────────────────────────────────── */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-md z-[100] flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in duration-200">
-            <div className="px-8 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-main)] sticky top-0 z-10">
+        <div className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in duration-200">
+            <div className="px-8 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-main)] shrink-0 z-10">
               <h3 className="text-xl font-black text-[var(--text-primary)] uppercase tracking-tighter">
                 {editingCustomer ? 'Alterar Cadastro' : 'Novo Cliente'}
               </h3>
-              <button onClick={() => setModalOpen(false)} className="text-[var(--text-secondary)] hover:text-slate-800 p-2 transition-transform w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200/50">
+              <button href="#" onClick={(e) => { e.preventDefault(); setModalOpen(false); }} className="text-[var(--text-secondary)] hover:text-slate-800 p-2 transition-transform w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200/50">
                 <i className="fa-solid fa-xmark text-xl"></i>
               </button>
             </div>
-            <form onSubmit={handleSave} className="p-8 space-y-8">
-              {/* Dados Principais */}
-              <div className="space-y-4">
-                <h4 className="font-bold text-blue-600 flex items-center gap-2 text-[11px] uppercase tracking-widest border-l-4 border-blue-500 pl-3">
-                  Dados Principais
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome Completo</label>
-                    <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">WhatsApp / Fone</label>
-                    <input type="text" required maxLength={14} placeholder="(00)00000-0000" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-blue-600" value={formData.phone} onChange={e => setFormData({ ...formData, phone: maskPhone(e.target.value) })} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cidade e UF</label>
-                    <input type="text" required placeholder="Ex: Palmas/TO" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Localização */}
-              <div className="space-y-4">
-                <h4 className="font-bold text-blue-600 flex items-center gap-2 text-[11px] uppercase tracking-widest border-l-4 border-blue-500 pl-3">
-                  Localização de Atendimento
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Logradouro (Rua/Av)</label>
-                    <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Número / Complemento</label>
-                    <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" value={formData.number} onChange={e => setFormData({ ...formData, number: e.target.value })} />
-                  </div>
-                  <div className="md:col-span-1">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Bairro / Setor</label>
-                    <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.sector} onChange={e => setFormData({ ...formData, sector: e.target.value })} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Notas de Acesso / Obs. Internas</label>
-                    <textarea className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" rows={2} placeholder="Ex: Cerca elétrica no muro, cachorro bravo, ligar antes..." value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Agendar OS junto */}
-              {!editingCustomer && (
-                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4 shadow-inner">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all shadow-sm ${openOSNow ? 'bg-blue-600 text-white' : 'bg-white text-slate-400'}`}>
-                        <i className="fa-solid fa-file-circle-plus text-lg"></i>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900 leading-none">Agendar primeira OS agora?</h4>
-                        <p className="text-[10px] text-slate-400 mt-1 font-bold">Cria o cliente e já agenda o primeiro atendimento.</p>
-                      </div>
+            <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar flex-1">
+                {/* Dados Principais */}
+                <div className="space-y-4">
+                  <h4 className="font-bold text-blue-600 flex items-center gap-2 text-[11px] uppercase tracking-widest border-l-4 border-blue-500 pl-3">
+                    Dados Principais
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome Completo</label>
+                      <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" checked={openOSNow} onChange={e => setOpenOSNow(e.target.checked)} />
-                      <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-6 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
-                    </label>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">WhatsApp / Fone</label>
+                      <input type="text" required maxLength={14} placeholder="(00)00000-0000" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-blue-600" value={formData.phone} onChange={e => setFormData({ ...formData, phone: maskPhone(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cidade e UF</label>
+                      <input type="text" required placeholder="Ex: Palmas/TO" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
+                    </div>
                   </div>
+                </div>
 
-                  {openOSNow && (
-                    <div className="grid grid-cols-1 gap-5 animate-in slide-in-from-top-4 duration-300 pt-2">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Descrição Técnica do Pedido</label>
-                        <textarea
-                          required={openOSNow}
-                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none bg-white font-medium"
-                          rows={2}
-                          placeholder="O que o cliente solicitou?"
-                          value={initialOS.description}
-                          onChange={e => setInitialOS({ ...initialOS, description: e.target.value })}
-                        />
+                {/* Localização */}
+                <div className="space-y-4">
+                  <h4 className="font-bold text-blue-600 flex items-center gap-2 text-[11px] uppercase tracking-widest border-l-4 border-blue-500 pl-3">
+                    Localização de Atendimento
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Logradouro (Rua/Av)</label>
+                      <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Número / Complemento</label>
+                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" value={formData.number} onChange={e => setFormData({ ...formData, number: e.target.value })} />
+                    </div>
+                    <div className="md:col-span-1">
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Bairro / Setor</label>
+                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.sector} onChange={e => setFormData({ ...formData, sector: e.target.value })} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Notas de Acesso / Obs. Internas</label>
+                      <textarea className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" rows={2} placeholder="Ex: Cerca elétrica no muro, cachorro bravo, ligar antes..." value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Agendar OS junto */}
+                {!editingCustomer && (
+                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4 shadow-inner">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all shadow-sm ${openOSNow ? 'bg-blue-600 text-white' : 'bg-white text-slate-400'}`}>
+                          <i className="fa-solid fa-file-circle-plus text-lg"></i>
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900 leading-none">Agendar primeira OS agora?</h4>
+                          <p className="text-[10px] text-slate-400 mt-1 font-bold">Cria o cliente e já agenda o primeiro atendimento.</p>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" className="sr-only peer" checked={openOSNow} onChange={e => setOpenOSNow(e.target.checked)} />
+                        <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-6 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                      </label>
+                    </div>
+
+                    {openOSNow && (
+                      <div className="grid grid-cols-1 gap-5 animate-in slide-in-from-top-4 duration-300 pt-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Natureza</label>
-                          <select
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold"
-                            value={initialOS.type}
-                            onChange={e => setInitialOS({ ...initialOS, type: e.target.value })}
-                          >
-                            {(company?.settings.orderTypes || ['Manutenção', 'Instalação', 'Reparo', 'Configuração', 'Visita Técnica']).map(type => (
-                              <option key={type} value={type}>{type}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Responsável</label>
-                          <select
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold"
-                            value={initialOS.techId}
-                            onChange={e => setInitialOS({ ...initialOS, techId: e.target.value })}
-                          >
-                            {users.length === 0 ? (
-                              <option value="">— Selecione um responsável —</option>
-                            ) : (
-                              users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)
-                            )}
-                          </select>
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Data/Hora</label>
-                          <input
-                            type="datetime-local"
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Descrição Técnica do Pedido</label>
+                          <textarea
                             required={openOSNow}
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold text-blue-600"
-                            value={initialOS.scheduledDate}
-                            onChange={e => setInitialOS({ ...initialOS, scheduledDate: e.target.value })}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none bg-white font-medium"
+                            rows={2}
+                            placeholder="O que o cliente solicitou?"
+                            value={initialOS.description}
+                            onChange={e => setInitialOS({ ...initialOS, description: e.target.value })}
                           />
                         </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Natureza</label>
+                            <select
+                              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold"
+                              value={initialOS.type}
+                              onChange={e => setInitialOS({ ...initialOS, type: e.target.value })}
+                            >
+                              {(company?.settings.orderTypes || ['Manutenção', 'Instalação', 'Reparo', 'Configuração', 'Visita Técnica']).map(type => (
+                                <option key={type} value={type}>{type}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Responsável</label>
+                            <select
+                              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold"
+                              value={initialOS.techId}
+                              onChange={e => setInitialOS({ ...initialOS, techId: e.target.value })}
+                            >
+                              {users.length === 0 ? (
+                                <option value="">— Selecione um responsável —</option>
+                              ) : (
+                                users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)
+                              )}
+                            </select>
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-widest">Data/Hora</label>
+                            <input
+                              type="datetime-local"
+                              required={openOSNow}
+                              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white font-bold text-blue-600"
+                              value={initialOS.scheduledDate}
+                              onChange={e => setInitialOS({ ...initialOS, scheduledDate: e.target.value })}
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
 
-              <div className="pt-4 flex gap-4 sticky bottom-0 bg-white m-0 p-8 border-t border-[var(--border-color)]">
+              </div>
+              <div className="pt-4 flex gap-4 bg-white m-0 p-8 border-t border-[var(--border-color)] shrink-0 z-10">
                 <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-4 border border-[var(--border-color)] rounded-2xl font-black text-xs uppercase tracking-widest text-[var(--text-secondary)] hover:bg-[var(--bg-main)] transition-colors">
                   Descartar
                 </button>
