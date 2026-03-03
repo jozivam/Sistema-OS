@@ -87,6 +87,9 @@ const OrderDetails: React.FC = () => {
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
   const [finishReport, setFinishReport] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'attachments' | 'reports' | 'settings'>('details');
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isSpecialPurchaseOpen, setIsSpecialPurchaseOpen] = useState(false);
+  const [specialPurchaseForm, setSpecialPurchaseForm] = useState({ productName: '', quantity: 1, price: 0, supplierName: '' });
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -234,6 +237,22 @@ const OrderDetails: React.FC = () => {
     } finally {
       setIsGeneratingAI(false);
     }
+  };
+
+  const handleSpecialPurchase = async () => {
+    // Aqui vai a lógica (Simulada no mock por enquanto, logo com real DB interactions)
+    if (!specialPurchaseForm.productName || !specialPurchaseForm.supplierName || specialPurchaseForm.price <= 0) {
+      setToast({ message: 'Preencha todos os campos da compra.', type: 'error' });
+      return;
+    }
+
+    // Simulate flow:
+    // 1. Create Supplier if not exists (mocked or real DB logic)
+    // 2. Add Expense to financial_transactions 
+    // 3. Inform success
+    setToast({ message: `Compra de ${specialPurchaseForm.quantity}x ${specialPurchaseForm.productName} registrada e vinculada! Sobra no estoque do técnico.`, type: 'success' });
+    setIsSpecialPurchaseOpen(false);
+    setSpecialPurchaseForm({ productName: '', quantity: 1, price: 0, supplierName: '' });
   };
 
   const handleSave = async (type: 'all' | 'desc' | 'report' | 'ai' | 'none' = 'all') => {
@@ -736,72 +755,59 @@ const OrderDetails: React.FC = () => {
           )}
         </div>
 
-        {/* ════ COLUNA DIREITA — Comentários ════ */}
-        <div className="order-2 lg:col-span-4 flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-
+        {/* ════ COLUNA DIREITA — Estoque e Materiais da OS ════ */}
+        <div className="order-2 lg:col-span-4 flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden min-h-[500px]">
           {/* Título */}
-          <div className="px-5 py-4 border-b border-slate-100 shrink-0">
-            <h2 className="font-semibold text-slate-800 text-base">Comentários</h2>
+          <div className="px-5 py-4 border-b border-slate-100 shrink-0 bg-slate-50 flex justify-between items-center">
+            <div>
+              <h2 className="font-bold text-slate-800 text-sm tracking-tight uppercase">Materiais e Estoque</h2>
+              <p className="text-[10px] text-slate-500 font-medium">Itens atrelados a esta Ordem de Serviço</p>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+              <i className="fa-solid fa-box-open text-xs"></i>
+            </div>
           </div>
 
-          {/* Lista */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 custom-scrollbar">
-            {(order.posts || []).length === 0 && (
-              <p className="text-xs text-slate-400 italic text-center mt-8">Nenhum comentário ainda.</p>
-            )}
-            {(order.posts || []).map((post: OrderPost) => {
-              const isSystem = post.userId === 'ai-assistant';
-              const initial = isSystem ? '🤖' : post.userName.charAt(0).toUpperCase();
-              const color = isSystem ? 'bg-indigo-100 text-indigo-600' : `${getAvatarColor(post.userName)} text-white`;
-              return (
-                <div key={post.id} className="flex gap-3">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold shadow-sm ${color}`}>
-                    {isSystem ? <i className="fa-solid fa-robot text-xs"></i> : initial}
+          {/* Lista de Materiais Mock (Em breve DB real) */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar">
+            {/* Simulação de um Item Adicionado */}
+            <div className="space-y-4">
+              {/* Item 1 */}
+              <div className="group relative border border-slate-100 rounded-xl p-3 hover:border-blue-200 hover:shadow-sm transition-all bg-white">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">Conector RJ45 (NET-001)</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Retirado do: Veículo Pablo</p>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-0.5">
-                      <span className="font-semibold text-sm text-slate-800">{post.userName}</span>
-                      <span className="text-xs text-slate-400">{timeAgo(post.createdAt)}</span>
-                    </div>
-                    <p className="text-sm text-slate-700 leading-relaxed">{post.content}</p>
-                  </div>
+                  <span className="bg-emerald-50 text-emerald-700 font-black text-xs px-2 py-0.5 rounded border border-emerald-100/50 block">5 un</span>
                 </div>
-              );
-            })}
-            <div ref={chatEndRef} />
-          </div>
-
-          {/* Área de composição */}
-          {!isLocked ? (
-            <div className="px-4 py-4 border-t border-slate-100 shrink-0 space-y-3">
-              <div className="flex gap-3">
-                {/* Avatar do usuário atual */}
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold shadow-sm ${currentUser ? `${getAvatarColor(currentUser.name)} text-white` : 'bg-slate-200 text-slate-500'}`}>
-                  {currentUser?.name.charAt(0).toUpperCase() || '?'}
+                <div className="flex justify-end gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button className="text-[10px] font-bold text-rose-500 hover:bg-rose-50 px-2 py-1 rounded transition-colors uppercase tracking-wider">Devolver</button>
                 </div>
-                <textarea
-                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[72px] bg-white shadow-sm"
-                  placeholder="Escreva um comentário para fechar o atendimento ou enviar à gestão"
-                  value={newPostContent}
-                  onChange={e => setNewPostContent(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddPost(); } }}
-                />
               </div>
-              <div className="flex items-center gap-2 pl-12">
-                <button
-                  onClick={() => handleAddPost()}
-                  disabled={!newPostContent.trim()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
-                >
-                  Adicionar Comentário
+
+              {/* Add Botão Grande (Placeholder) */}
+              <div className="pt-2 flex flex-col gap-2">
+                <button onClick={() => setToast({ message: 'Nova interface de Venda/Uso de estoque em breve!', type: 'success' })} className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/30 rounded-xl transition-all font-semibold text-xs flex flex-col items-center justify-center gap-1 group">
+                  <i className="fa-solid fa-plus text-base group-hover:scale-110 transition-transform"></i>
+                  <span>Adicionar Material do Estoque</span>
+                </button>
+                <button onClick={() => setIsSpecialPurchaseOpen(true)} className="w-full py-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all font-semibold text-xs flex items-center justify-center gap-2 group">
+                  <i className="fa-solid fa-cart-shopping text-sm group-hover:scale-110 transition-transform"></i>
+                  Registrar Compra Externa (Avulsa)
                 </button>
               </div>
+
+              <div className="bg-amber-50 rounded-xl p-3 border border-amber-100/50 mt-4">
+                <div className="flex gap-2">
+                  <i className="fa-solid fa-lightbulb text-amber-500 text-xs mt-0.5"></i>
+                  <p className="text-[10px] font-medium text-amber-700 leading-relaxed">
+                    Cliente quer comprar um roteador? Você poderá transferir diretamente do seu estoque para o estoque do cliente, ou usar o PDV para abater os materiais utilizados no serviço.
+                  </p>
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="px-5 py-4 border-t border-slate-100 shrink-0 text-center">
-              <p className="text-xs text-slate-400 flex items-center justify-center gap-2"><i className="fa-solid fa-lock"></i> Comentários encerrados</p>
-            </div>
-          )}
+          </div>
         </div>
 
       </div>
@@ -841,6 +847,71 @@ const OrderDetails: React.FC = () => {
                   Finalizar e Salvar Relatório
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Compra Externa ── */}
+      {isSpecialPurchaseOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-md">
+                  <i className="fa-solid fa-cart-arrow-down"></i>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Compra de Suprimento</h3>
+                  <p className="text-xs text-indigo-600 font-semibold uppercase tracking-wider mt-0.5">Urgência em Campo</p>
+                </div>
+              </div>
+              <button onClick={() => setIsSpecialPurchaseOpen(false)} className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-800 transition-colors shadow-sm">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 bg-slate-50/30">
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-100/50 flex gap-3 text-amber-800">
+                <i className="fa-solid fa-circle-info mt-0.5 text-amber-500"></i>
+                <p className="text-xs font-medium leading-relaxed">
+                  Utilize isto quando o técnico precisar comprar materiais num fornecedor externo (Ex: Casa de Ferragem) para finalizar esta OS. <br />
+                  <strong className="mt-1 block">O valor será lançado como DESPESA no Financeiro. O material será injetado na OS e a sobra vai para o estoque do técnico.</strong>
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Fornecedor / Loja</label>
+                  <input type="text" placeholder="Ex: Loja do Parafuso" value={specialPurchaseForm.supplierName} onChange={e => setSpecialPurchaseForm({ ...specialPurchaseForm, supplierName: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Material Comprado</label>
+                  <input type="text" placeholder="Ex: Parafuso Sextavado 6mm" value={specialPurchaseForm.productName} onChange={e => setSpecialPurchaseForm({ ...specialPurchaseForm, productName: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Quantidade</label>
+                    <input type="number" min="1" value={specialPurchaseForm.quantity} onChange={e => setSpecialPurchaseForm({ ...specialPurchaseForm, quantity: Number(e.target.value) })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Valor Total Pago (R$)</label>
+                    <input type="number" min="0" step="0.01" value={specialPurchaseForm.price} onChange={e => setSpecialPurchaseForm({ ...specialPurchaseForm, price: Number(e.target.value) })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white border-t border-slate-100 flex gap-3">
+              <button onClick={() => setIsSpecialPurchaseOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-xl font-semibold text-sm text-slate-500 hover:bg-slate-50 transition-all">
+                Cancelar
+              </button>
+              <button onClick={handleSpecialPurchase} className="flex-[2] py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+                <i className="fa-solid fa-check"></i>
+                Lançar Compra Externa
+              </button>
             </div>
           </div>
         </div>
@@ -886,6 +957,97 @@ const OrderDetails: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── Modal Offcanvas Comentários ── */}
+      {isCommentsOpen && (
+        <div className="fixed inset-0 z-[90] flex justify-end pointer-events-none h-full">
+          <div className="relative bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 z-10 pointer-events-auto border-l border-slate-200">
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-white z-10">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Comentários da OS</h3>
+                <p className="text-xs font-medium text-gray-500 mt-1">Histórico e anotações</p>
+              </div>
+              <button onClick={() => setIsCommentsOpen(false)} className="text-gray-400 hover:text-gray-500 p-2 bg-gray-50 hover:bg-gray-100 rounded-full transition-colors"><i className="fa-solid fa-xmark"></i></button>
+            </div>
+
+            {/* Lista */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 custom-scrollbar bg-slate-50/30">
+              {(order.posts || []).length === 0 && (
+                <div className="text-center mt-12">
+                  <i className="fa-regular fa-comments text-4xl text-slate-200 mb-3"></i>
+                  <p className="text-xs text-slate-400 font-medium">Nenhum comentário ainda.</p>
+                </div>
+              )}
+              {(order.posts || []).map((post: OrderPost) => {
+                const isSystem = post.userId === 'ai-assistant';
+                const initial = isSystem ? '🤖' : post.userName.charAt(0).toUpperCase();
+                const color = isSystem ? 'bg-indigo-100 text-indigo-600' : `${getAvatarColor(post.userName)} text-white`;
+                return (
+                  <div key={post.id} className="flex gap-3">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold shadow-sm ${color}`}>
+                      {isSystem ? <i className="fa-solid fa-robot text-xs"></i> : initial}
+                    </div>
+                    <div className="flex-1 min-w-0 bg-white p-3 rounded-xl border border-slate-100 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+                      <div className="flex justify-between items-baseline gap-2 mb-1 border-b border-slate-50 pb-1.5">
+                        <span className="font-bold text-xs text-slate-800">{post.userName}</span>
+                        <span className="text-[10px] text-slate-400 font-medium">{timeAgo(post.createdAt)}</span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium">{post.content}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Área de composição */}
+            {!isLocked ? (
+              <div className="px-4 pt-3 pb-6 border-t border-gray-100 shrink-0 bg-white">
+                <div className="flex gap-3 flex-col">
+                  <textarea
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[90px] bg-slate-50/50 focus:bg-white transition-colors"
+                    placeholder="Escreva um comentário..."
+                    value={newPostContent}
+                    onChange={e => setNewPostContent(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddPost(); } }}
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => handleAddPost()}
+                      disabled={!newPostContent.trim()}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-xs font-bold shadow hover:shadow-md transition-all disabled:opacity-50 uppercase tracking-widest flex items-center gap-2"
+                    >
+                      <span>Enviar</span>
+                      <i className="fa-solid fa-paper-plane text-[10px]"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="px-5 py-6 border-t border-gray-100 shrink-0 text-center bg-white">
+                <div className="inline-flex items-center justify-center gap-2 bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-full border border-slate-100">
+                  <i className="fa-solid fa-lock"></i> Comentários encerrados
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Botão Flutuante (FAB) Comentários ── */}
+      <button
+        onClick={() => setIsCommentsOpen(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-blue-700 transition-all z-50 hover:scale-105 active:scale-95 group border-4 border-white"
+        title="Ver Comentários"
+      >
+        <i className="fa-solid fa-comments text-xl group-hover:-translate-y-0.5 transition-transform"></i>
+        {(order.posts && order.posts.length > 0) && (
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 border-2 border-white rounded-full text-[10px] font-black flex items-center justify-center shadow-sm">
+            {order.posts.length}
+          </span>
+        )}
+      </button>
+
     </div>
   );
 };

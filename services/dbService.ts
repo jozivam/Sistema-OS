@@ -27,6 +27,7 @@ const mapCompany = (raw: any): Company => {
         period: (raw.plan_period || 'MENSAL') as CompanyPeriod,
         monthlyFee: Number(raw.monthly_fee),
         status: raw.status as 'ACTIVE' | 'BLOCKED',
+        ativo: raw.ativo ?? true,
         createdAt: raw.created_at,
         expiresAt: raw.expires_at,
         settings: {
@@ -57,6 +58,7 @@ const mapUser = (raw: any): User => {
         role: role as UserRole,
         city: raw.city,
         isBlocked: raw.is_blocked,
+        ativo: raw.ativo ?? true,
         password: raw.password
     };
 };
@@ -71,6 +73,8 @@ const mapCustomer = (raw: any): Customer => ({
     number: raw.number,
     sector: raw.sector,
     notes: raw.notes,
+    estado: raw.estado,
+    ativo: raw.ativo ?? true,
     createdAt: raw.created_at
 });
 
@@ -108,8 +112,10 @@ const mapOrder = (raw: any): ServiceOrder => {
         dailyHistory: raw.daily_history,
         aiReport: raw.ai_report,
         status: status as OrderStatus,
+        ativo: raw.ativo ?? true,
         createdAt: raw.created_at,
         scheduledDate: raw.scheduled_date,
+        prazo: raw.prazo,
         finishedAt: raw.finished_at,
         cancellationReason: raw.cancellation_reason,
         posts: posts || [],
@@ -120,7 +126,7 @@ const mapOrder = (raw: any): ServiceOrder => {
 export const dbService: IDatabaseService = {
     // Empresas
     async getCompanies(): Promise<Company[]> {
-        const { data, error } = await supabase.from('companies').select('*');
+        const { data, error } = await supabase.from('companies').select('*').eq('ativo', true);
         if (error) throw error;
         return (data || []).map(mapCompany);
     },
@@ -173,15 +179,14 @@ export const dbService: IDatabaseService = {
     },
 
     async deleteCompany(id: string) {
-        // Warning: This should probably handle cascading deletes or be handled by foreign keys
-        const { error } = await supabase.from('companies').delete().eq('id', id);
+        const { error } = await supabase.from('companies').update({ ativo: false }).eq('id', id);
         if (error) throw error;
     },
 
     // Usuários
     async getUsers(companyId?: string): Promise<User[]> {
         if (companyId === 'trial-company') return [];
-        let query = supabase.from('users').select('*');
+        let query = supabase.from('users').select('*').eq('ativo', true);
         if (companyId) query = query.eq('company_id', companyId);
         const { data, error } = await query;
         if (error) return [];
@@ -225,7 +230,7 @@ export const dbService: IDatabaseService = {
     },
 
     async deleteUser(id: string) {
-        const { error } = await supabase.from('users').delete().eq('id', id);
+        const { error } = await supabase.from('users').update({ ativo: false }).eq('id', id);
         if (error) throw error;
     },
 
@@ -235,7 +240,7 @@ export const dbService: IDatabaseService = {
             const { getTrialCustomers } = await import('./trialService');
             return getTrialCustomers();
         }
-        let query = supabase.from('customers').select('*');
+        let query = supabase.from('customers').select('*').eq('ativo', true);
         if (companyId) query = query.eq('company_id', companyId);
         const { data, error } = await query;
         if (error) return [];
@@ -278,7 +283,7 @@ export const dbService: IDatabaseService = {
     },
 
     async deleteCustomer(id: string) {
-        const { error } = await supabase.from('customers').delete().eq('id', id);
+        const { error } = await supabase.from('customers').update({ ativo: false }).eq('id', id);
         if (error) throw error;
     },
 
@@ -293,7 +298,8 @@ export const dbService: IDatabaseService = {
 
         let query = supabase
             .from('service_orders')
-            .select('*, customers(name), users(name)');
+            .select('*, customers(name), users(name)')
+            .eq('ativo', true);
 
         if (companyId) query = query.eq('company_id', companyId);
         if (techId) query = query.eq('tech_id', techId);
@@ -352,7 +358,7 @@ export const dbService: IDatabaseService = {
     },
 
     async deleteOrder(id: string) {
-        const { error } = await supabase.from('service_orders').delete().eq('id', id);
+        const { error } = await supabase.from('service_orders').update({ ativo: false }).eq('id', id);
         if (error) throw error;
     },
 
@@ -767,6 +773,7 @@ Este é um relatório gerado localmente pelo ambiente de testes (Demonstração)
             .from('customers')
             .select('*')
             .eq('company_id', companyId)
+            .eq('ativo', true)
             // No PostgREST .or() recebe uma string no formato "coluna.op.valor,coluna2.op.valor"
             // Sem as aspas duplas adicionais dentro do valor, apenas a url encoding
             .or(`name.ilike.%${query.trim()}%,phone.ilike.%${query.trim()}%,city.ilike.%${query.trim()}%`)
@@ -781,6 +788,7 @@ Este é um relatório gerado localmente pelo ambiente de testes (Demonstração)
                 customer:customers!inner(id, name, city)
             `)
             .eq('company_id', companyId)
+            .eq('ativo', true)
             // Filtros de or: busca direto na ordem. Não usaremos id.ilike pois se for UUID o PostgREST retorna 400.
             .or(`type.ilike.%${query.trim()}%,description.ilike.%${query.trim()}%`)
             .order('created_at', { ascending: false })
@@ -792,6 +800,7 @@ Este é um relatório gerado localmente pelo ambiente de testes (Demonstração)
                 .from('users')
                 .select('*')
                 .eq('company_id', companyId)
+                .eq('ativo', true)
                 .or(`name.ilike.%${query.trim()}%,email.ilike.%${query.trim()}%`)
                 .limit(5);
         }

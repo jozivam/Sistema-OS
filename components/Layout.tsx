@@ -30,6 +30,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [isEstoqueOpen, setIsEstoqueOpen] = useState(false);
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/estoque')) {
+      setIsEstoqueOpen(true);
+    }
+  }, [location.pathname]);
+
   // Handle outside click for search dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -230,7 +238,22 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
       }
     }
     navItems.push({ path: '/ordens', label: 'Ordens de Serviço', icon: 'fa-file-invoice' });
+
+    // Módulo de Estoque
+    navItems.push({
+      id: 'estoque',
+      label: 'Estoque',
+      icon: 'fa-box-open',
+      isDropdown: true,
+      subItems: [
+        { path: '/estoque/produtos', label: 'Produtos', icon: 'fa-boxes-stacked' },
+        { path: '/estoque/depositos', label: 'Estoque / Locais', icon: 'fa-warehouse' },
+        { path: '/estoque/movimentacoes', label: 'Histórico', icon: 'fa-arrow-right-arrow-left' }
+      ]
+    });
+
     if (isAdmin || isTrial) {
+      navItems.push({ path: '/pdv', label: 'Caixa (PDV)', icon: 'fa-cash-register' });
       navItems.push({ path: '/usuarios', label: 'Usuários', icon: 'fa-user-gear' });
       navItems.push({ path: '/configuracoes', label: 'Configurações', icon: 'fa-sliders' });
     }
@@ -304,26 +327,73 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
           </div>
 
           <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-4 px-5 py-3.5 rounded-xl transition-colors font-medium text-sm group relative
-                  ${isActive(item.path)
-                    ? 'sidebar-link-active'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-slate-50'
-                  }
-                `}
-              >
-                <div className={`w-6 h-6 flex items-center justify-center transition-colors
-                   ${isActive(item.path) ? 'text-[var(--blue-primary)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'}
-                `}>
-                  <i className={`fa-solid ${item.icon} text-[16px]`}></i>
-                </div>
-                <span className="truncate tracking-tight">{item.label}</span>
-              </Link>
-            ))}
+            {navItems.map((item: any) => {
+              if (item.isDropdown) {
+                const isActiveDropdown = location.pathname.startsWith('/estoque');
+                return (
+                  <div key={item.id} className="space-y-1 mb-2">
+                    <button
+                      onClick={() => setIsEstoqueOpen(!isEstoqueOpen)}
+                      className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-all font-medium text-sm group relative
+                        ${isActiveDropdown || isEstoqueOpen
+                          ? 'bg-slate-50 text-[var(--text-primary)]'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-slate-50'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-6 h-6 flex items-center justify-center transition-colors
+                           ${isActiveDropdown || isEstoqueOpen ? 'text-[var(--blue-primary)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'}
+                        `}>
+                          <i className={`fa-solid ${item.icon} text-[16px]`}></i>
+                        </div>
+                        <span className="truncate tracking-tight font-black uppercase text-xs tracking-wider">{item.label}</span>
+                      </div>
+                      <i className={`fa-solid fa-chevron-down text-xs transition-transform ${isEstoqueOpen ? 'rotate-180 text-[var(--blue-primary)]' : 'text-[var(--text-muted)]'}`}></i>
+                    </button>
+
+                    {isEstoqueOpen && (
+                      <div className="px-3 pt-1 pb-2 space-y-1 bg-slate-50/50 rounded-xl mx-2 border border-slate-100">
+                        {item.subItems.map((subItem: any) => (
+                          <Link
+                            key={subItem.path}
+                            to={subItem.path}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] transition-all font-semibold ${isActive(subItem.path) ? 'bg-[var(--blue-primary)]/10 text-[var(--blue-primary)]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
+                          >
+                            <div className={`w-5 flex justify-center ${isActive(subItem.path) ? 'text-[var(--blue-primary)]' : 'text-slate-400'}`}>
+                              <i className={`fa-solid ${subItem.icon} text-[11px]`}></i>
+                            </div>
+                            {subItem.label}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center gap-4 px-5 py-3.5 rounded-xl transition-colors font-medium text-sm group relative
+                    ${isActive(item.path)
+                      ? 'sidebar-link-active'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-slate-50'
+                    }
+                  `}
+                >
+                  <div className={`w-6 h-6 flex items-center justify-center transition-colors
+                     ${isActive(item.path) ? 'text-[var(--blue-primary)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'}
+                  `}>
+                    <i className={`fa-solid ${item.icon} text-[16px]`}></i>
+                  </div>
+                  <span className="truncate tracking-tight">{item.label}</span>
+                </Link>
+              );
+            })}
 
             {/* Role Switcher — apenas no trial */}
           </nav>
@@ -353,16 +423,21 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
             <div className="flex-1 flex items-center gap-4">
               <h2 className="text-xl font-bold text-[var(--text-primary)] capitalize tracking-tight">
                 {(() => {
-                  const path = location.pathname.split('/')[1];
+                  const pathSegments = location.pathname.split('/').filter(Boolean);
+                  const path = pathSegments[0];
+                  const subPath = pathSegments[1];
+
                   const titles: Record<string, string> = {
                     dashboard: 'Painel',
+                    pdv: 'Frente de Caixa (PDV)',
                     chat: 'Mensagens',
                     clientes: 'Clientes',
                     ordens: 'Ordens de Serviço',
                     usuarios: 'Usuários',
                     relatorios: 'Relatórios',
                     configuracoes: 'Configurações',
-                    developer: 'Painel do Desenvolvedor'
+                    developer: 'Painel do Desenvolvedor',
+                    estoque: subPath === 'produtos' ? 'Produtos' : subPath === 'depositos' ? 'Depósitos e Saldos' : 'Movimentações de Estoque'
                   };
                   return titles[path] || (path?.replace('-', ' ')) || 'Painel';
                 })()}

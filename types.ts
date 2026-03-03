@@ -80,6 +80,7 @@ export interface Company {
   period: CompanyPeriod;
   monthlyFee: number;
   status: 'ACTIVE' | 'BLOCKED';
+  ativo?: boolean; // ERP V4 Soft Delete
   refundedAmount?: number;
   createdAt: string;
   expiresAt?: string;
@@ -96,18 +97,62 @@ export interface User {
   role: UserRole;
   city?: string;
   isBlocked?: boolean;
+  ativo?: boolean; // ERP V4 Soft Delete
 }
 
 export interface Customer {
   id: string;
   companyId: string;
   name: string;
+  document?: string;
+  customerType?: 'COMPLETO' | 'BALCAO';
   phone: string;
   city: string;
   address: string;
   number?: string;
   sector?: string;
   notes: string;
+  estado?: string; // ERP V4
+  ativo?: boolean; // ERP V4 Soft Delete
+  createdAt: string;
+}
+
+export interface Supplier {
+  id: string;
+  companyId: string;
+  name: string;
+  document?: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+}
+
+export enum TransactionType {
+  INCOME = 'RECEITA',
+  EXPENSE = 'DESPESA'
+}
+
+export enum TransactionCategory {
+  SALE = 'VENDA_PDV',
+  SUPPLY = 'COMPRA_SUPRIMENTO',
+  SERVICE = 'SERVICO_OS',
+  OTHER = 'OUTROS'
+}
+
+export interface FinancialTransaction {
+  id: string;
+  companyId: string;
+  type: TransactionType;
+  category: TransactionCategory;
+  amount: number;
+  description: string;
+  date: string;
+  orderId?: string;
+  supplierId?: string;
+  customerId?: string;
+  status: 'PAID' | 'PENDING' | 'CANCELLED';
   createdAt: string;
 }
 
@@ -137,15 +182,46 @@ export interface ServiceOrder {
   techName: string;
   type: string;
   description: string;
+  observacoes?: string; // ERP V4
   dailyHistory?: string;
   aiReport: string;
   status: OrderStatus;
+  ativo?: boolean; // ERP V4 Soft Delete
   createdAt: string;
   scheduledDate?: string;
+  prazo?: string; // ERP V4
   finishedAt?: string;
   cancellationReason?: string;
   posts: OrderPost[];
   attachments?: OrderAttachment[];
+}
+
+// ==========================================
+// VENDAS (PDV) - ERP V4
+// ==========================================
+export interface VendaItem {
+  id: string;
+  vendaId: string;
+  produtoId: string;
+  descricaoPersonalizada?: string;
+  quantidade: number;
+  precoUnitario: number;
+  desconto: number;
+  total: number;
+}
+
+export interface Venda {
+  id: string;
+  companyId: string;
+  clienteId?: string;
+  ordemServicoId?: string;
+  subtotal: number;
+  descontoTotal: number;
+  total: number;
+  status: 'rascunho' | 'confirmada' | 'cancelada';
+  userId?: string;
+  createdAt: string;
+  itens?: VendaItem[];
 }
 
 export interface ChatMessage {
