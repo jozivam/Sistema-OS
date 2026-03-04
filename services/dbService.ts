@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Company, User, Customer, ServiceOrder, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan, CompanyPeriod, PlanPricing, AppNotification, NotificationType } from '../types';
+import { Company, User, Customer, ServiceOrder, Supplier, SystemSettings, ChatMessage, CompanyPayment, UserRole, OrderStatus, CompanyPlan, CompanyPeriod, PlanPricing, AppNotification, NotificationType, Product, StorageLocation, StockMovement } from '../types';
 import { IDatabaseService } from './database.types';
 
 // Mappers to convert between Supabase snake_case and App camelCase
@@ -21,8 +21,13 @@ const mapCompany = (raw: any): Company => {
         document: raw.document,
         email: raw.email,
         phone: raw.phone,
+        zipCode: raw.zip_code,
         address: raw.address,
+        number: raw.number,
+        complement: raw.complement,
+        neighborhood: raw.neighborhood,
         city: raw.city,
+        state: raw.state,
         plan: raw.plan as CompanyPlan,
         period: (raw.plan_period || 'MENSAL') as CompanyPeriod,
         monthlyFee: Number(raw.monthly_fee),
@@ -67,10 +72,17 @@ const mapCustomer = (raw: any): Customer => ({
     id: raw.id,
     companyId: raw.company_id,
     name: raw.name,
+    corporateName: raw.corporate_name,
+    document: raw.document,
+    customerType: raw.customer_type,
+    email: raw.email,
     phone: raw.phone,
+    zipCode: raw.zip_code,
     city: raw.city,
     address: raw.address,
     number: raw.number,
+    complement: raw.complement,
+    neighborhood: raw.neighborhood,
     sector: raw.sector,
     notes: raw.notes,
     estado: raw.estado,
@@ -123,6 +135,86 @@ const mapOrder = (raw: any): ServiceOrder => {
     };
 };
 
+const mapSupplier = (raw: any): Supplier => {
+    return {
+        id: raw.id,
+        companyId: raw.company_id,
+        name: raw.name,
+        corporateName: raw.corporate_name,
+        document: raw.document,
+        phone: raw.phone,
+        email: raw.email,
+        zipCode: raw.zip_code,
+        address: raw.address,
+        number: raw.number,
+        complement: raw.complement,
+        neighborhood: raw.neighborhood,
+        city: raw.city,
+        state: raw.state,
+        status: raw.status || 'ACTIVE',
+        createdAt: raw.created_at
+    };
+};
+
+const mapProduct = (raw: any): Product => {
+    return {
+        id: raw.id,
+        companyId: raw.company_id,
+        nome: raw.nome,
+        descricao: raw.descricao,
+        imagens: raw.imagens,
+        precoVenda: Number(raw.preco_venda),
+        sku: raw.sku,
+        peso: Number(raw.peso),
+        altura: Number(raw.altura),
+        largura: Number(raw.largura),
+        comprimento: Number(raw.comprimento),
+        quantidadeEstoque: Number(raw.quantidade_estoque),
+        ean: raw.ean,
+        ncm: raw.ncm,
+        variacoes: raw.variacoes,
+        categoria: raw.categoria,
+        marca: raw.marca,
+        seoTitle: raw.seo_title,
+        seoDescription: raw.seo_description,
+        fornecedorId: raw.fornecedor_id,
+        valorCompra: Number(raw.valor_compra),
+        margemLucro: Number(raw.margem_lucro),
+        status: raw.status || 'ACTIVE',
+        createdAt: raw.created_at
+    };
+};
+
+const mapStorageLocation = (raw: any): StorageLocation => {
+    return {
+        id: raw.id,
+        companyId: raw.company_id,
+        nome: raw.nome,
+        localizacao: raw.localizacao,
+        ativo: raw.ativo,
+        createdAt: raw.created_at
+    };
+};
+
+const mapStockMovement = (raw: any): StockMovement => {
+    return {
+        id: raw.id,
+        companyId: raw.company_id,
+        produtoId: raw.produto_id,
+        tipo: raw.tipo,
+        quantidade: Number(raw.quantidade),
+        origemId: raw.origem_id,
+        destinoId: raw.destino_id,
+        fornecedorId: raw.fornecedor_id,
+        documentRef: raw.document_ref,
+        userId: raw.user_id,
+        userName: raw.user_name,
+        observacoes: raw.observacoes,
+        createdAt: raw.created_at
+    };
+};
+
+
 export const dbService: IDatabaseService = {
     // Empresas
     async getCompanies(): Promise<Company[]> {
@@ -145,8 +237,13 @@ export const dbService: IDatabaseService = {
         if (updates.document) dbUpdates.document = updates.document;
         if (updates.email) dbUpdates.email = updates.email;
         if (updates.phone) dbUpdates.phone = updates.phone;
+        if (updates.zipCode) dbUpdates.zip_code = updates.zipCode;
         if (updates.address) dbUpdates.address = updates.address;
+        if (updates.number) dbUpdates.number = updates.number;
+        if (updates.complement) dbUpdates.complement = updates.complement;
+        if (updates.neighborhood) dbUpdates.neighborhood = updates.neighborhood;
         if (updates.city) dbUpdates.city = updates.city;
+        if (updates.state) dbUpdates.state = updates.state;
         if (updates.plan) dbUpdates.plan = updates.plan;
         if (updates.period) dbUpdates.plan_period = updates.period;
         if (updates.monthlyFee !== undefined) dbUpdates.monthly_fee = updates.monthlyFee;
@@ -257,11 +354,19 @@ export const dbService: IDatabaseService = {
         const { data, error } = await supabase.from('customers').insert({
             company_id: customer.companyId,
             name: customer.name,
+            corporate_name: customer.corporateName,
+            document: customer.document,
+            customer_type: customer.customerType,
+            email: customer.email,
             phone: customer.phone,
+            zip_code: customer.zipCode,
             city: customer.city,
             address: customer.address,
             number: customer.number,
+            complement: customer.complement,
+            neighborhood: customer.neighborhood,
             sector: customer.sector,
+            estado: customer.estado,
             notes: customer.notes
         }).select().single();
         if (error) throw error;
@@ -271,12 +376,20 @@ export const dbService: IDatabaseService = {
     async updateCustomer(id: string, updates: Partial<Customer>) {
         const dbUpdates: any = {};
         if (updates.name) dbUpdates.name = updates.name;
-        if (updates.phone) dbUpdates.phone = updates.phone;
-        if (updates.city) dbUpdates.city = updates.city;
-        if (updates.address) dbUpdates.address = updates.address;
-        if (updates.number) dbUpdates.number = updates.number;
-        if (updates.sector) dbUpdates.sector = updates.sector;
-        if (updates.notes) dbUpdates.notes = updates.notes;
+        if (updates.corporateName !== undefined) dbUpdates.corporate_name = updates.corporateName;
+        if (updates.document !== undefined) dbUpdates.document = updates.document;
+        if (updates.customerType !== undefined) dbUpdates.customer_type = updates.customerType;
+        if (updates.email !== undefined) dbUpdates.email = updates.email;
+        if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+        if (updates.zipCode !== undefined) dbUpdates.zip_code = updates.zipCode;
+        if (updates.city !== undefined) dbUpdates.city = updates.city;
+        if (updates.address !== undefined) dbUpdates.address = updates.address;
+        if (updates.number !== undefined) dbUpdates.number = updates.number;
+        if (updates.complement !== undefined) dbUpdates.complement = updates.complement;
+        if (updates.neighborhood !== undefined) dbUpdates.neighborhood = updates.neighborhood;
+        if (updates.sector !== undefined) dbUpdates.sector = updates.sector;
+        if (updates.estado !== undefined) dbUpdates.estado = updates.estado;
+        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
         const { error } = await supabase.from('customers').update(dbUpdates).eq('id', id);
         if (error) throw error;
@@ -284,6 +397,73 @@ export const dbService: IDatabaseService = {
 
     async deleteCustomer(id: string) {
         const { error } = await supabase.from('customers').update({ ativo: false }).eq('id', id);
+        if (error) throw error;
+    },
+
+    // Fornecedores
+    async getSuppliers(companyId?: string): Promise<Supplier[]> {
+        let query = supabase.from('suppliers').select('*').order('name', { ascending: true });
+        if (companyId) {
+            query = query.eq('company_id', companyId);
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        return (data || []).map(mapSupplier);
+    },
+
+    async getSupplier(id: string): Promise<Supplier | null> {
+        const { data, error } = await supabase.from('suppliers').select('*').eq('id', id).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        if (!data) return null;
+        return mapSupplier(data);
+    },
+
+    async createSupplier(supplier: Omit<Supplier, 'id' | 'createdAt'>): Promise<Supplier> {
+        const newId = crypto.randomUUID();
+        const { data, error } = await supabase.from('suppliers').insert({
+            id: newId,
+            company_id: supplier.companyId,
+            name: supplier.name,
+            corporate_name: supplier.corporateName || null,
+            document: supplier.document || null,
+            phone: supplier.phone || null,
+            email: supplier.email || null,
+            zip_code: supplier.zipCode || null,
+            address: supplier.address || null,
+            number: supplier.number || null,
+            complement: supplier.complement || null,
+            neighborhood: supplier.neighborhood || null,
+            city: supplier.city || null,
+            state: supplier.state || null,
+            status: supplier.status || 'ACTIVE',
+            created_at: new Date().toISOString()
+        }).select().single();
+        if (error) throw error;
+        return mapSupplier(data);
+    },
+
+    async updateSupplier(id: string, updates: Partial<Supplier>) {
+        const mappedUpdates: any = {};
+        if (updates.name !== undefined) mappedUpdates.name = updates.name;
+        if (updates.corporateName !== undefined) mappedUpdates.corporate_name = updates.corporateName;
+        if (updates.document !== undefined) mappedUpdates.document = updates.document;
+        if (updates.phone !== undefined) mappedUpdates.phone = updates.phone;
+        if (updates.email !== undefined) mappedUpdates.email = updates.email;
+        if (updates.zipCode !== undefined) mappedUpdates.zip_code = updates.zipCode;
+        if (updates.address !== undefined) mappedUpdates.address = updates.address;
+        if (updates.number !== undefined) mappedUpdates.number = updates.number;
+        if (updates.complement !== undefined) mappedUpdates.complement = updates.complement;
+        if (updates.neighborhood !== undefined) mappedUpdates.neighborhood = updates.neighborhood;
+        if (updates.city !== undefined) mappedUpdates.city = updates.city;
+        if (updates.state !== undefined) mappedUpdates.state = updates.state;
+        if (updates.status !== undefined) mappedUpdates.status = updates.status;
+
+        const { error } = await supabase.from('suppliers').update(mappedUpdates).eq('id', id);
+        if (error) throw error;
+    },
+
+    async deleteSupplier(id: string) {
+        const { error } = await supabase.from('suppliers').delete().eq('id', id);
         if (error) throw error;
     },
 
@@ -360,6 +540,138 @@ export const dbService: IDatabaseService = {
     async deleteOrder(id: string) {
         const { error } = await supabase.from('service_orders').update({ ativo: false }).eq('id', id);
         if (error) throw error;
+    },
+
+    // Produtos
+    async getProducts(companyId?: string): Promise<Product[]> {
+        let query = supabase.from('products').select('*');
+        if (companyId) query = query.eq('company_id', companyId);
+        const { data, error } = await query.order('nome');
+        if (error) throw error;
+        return (data || []).map(mapProduct);
+    },
+    async getProduct(id: string): Promise<Product | null> {
+        const { data, error } = await supabase.from('products').select('*').eq('id', id).single();
+        if (error) return null;
+        return mapProduct(data);
+    },
+    async createProduct(product: any): Promise<Product> {
+        const payload = {
+            company_id: product.companyId,
+            nome: product.nome,
+            descricao: product.descricao,
+            imagens: product.imagens,
+            preco_venda: product.precoVenda,
+            sku: product.sku,
+            peso: product.peso,
+            altura: product.altura,
+            largura: product.largura,
+            comprimento: product.comprimento,
+            quantidade_estoque: product.quantidadeEstoque,
+            ean: product.ean,
+            ncm: product.ncm,
+            variacoes: product.variacoes,
+            categoria: product.categoria,
+            marca: product.marca,
+            seo_title: product.seoTitle,
+            seo_description: product.seoDescription,
+            fornecedor_id: product.fornecedorId,
+            valor_compra: product.valorCompra,
+            margem_lucro: product.margemLucro,
+            status: product.status || 'ACTIVE'
+        };
+        const { data, error } = await supabase.from('products').insert(payload).select().single();
+        if (error) throw error;
+        return mapProduct(data);
+    },
+    async updateProduct(id: string, product: Partial<Product>): Promise<void> {
+        const payload: any = {};
+        if (product.nome !== undefined) payload.nome = product.nome;
+        if (product.descricao !== undefined) payload.descricao = product.descricao;
+        if (product.imagens !== undefined) payload.imagens = product.imagens;
+        if (product.precoVenda !== undefined) payload.preco_venda = product.precoVenda;
+        if (product.sku !== undefined) payload.sku = product.sku;
+        if (product.peso !== undefined) payload.peso = product.peso;
+        if (product.altura !== undefined) payload.altura = product.altura;
+        if (product.largura !== undefined) payload.largura = product.largura;
+        if (product.comprimento !== undefined) payload.comprimento = product.comprimento;
+        if (product.quantidadeEstoque !== undefined) payload.quantidade_estoque = product.quantidadeEstoque;
+        if (product.ean !== undefined) payload.ean = product.ean;
+        if (product.ncm !== undefined) payload.ncm = product.ncm;
+        if (product.variacoes !== undefined) payload.variacoes = product.variacoes;
+        if (product.categoria !== undefined) payload.categoria = product.categoria;
+        if (product.marca !== undefined) payload.marca = product.marca;
+        if (product.seoTitle !== undefined) payload.seo_title = product.seoTitle;
+        if (product.seoDescription !== undefined) payload.seo_description = product.seoDescription;
+        if (product.fornecedorId !== undefined) payload.fornecedor_id = product.fornecedorId;
+        if (product.valorCompra !== undefined) payload.valor_compra = product.valorCompra;
+        if (product.margemLucro !== undefined) payload.margem_lucro = product.margemLucro;
+        if (product.status !== undefined) payload.status = product.status;
+
+        const { error } = await supabase.from('products').update(payload).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteProduct(id: string): Promise<void> {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    // Locais de Armazenamento
+    async getStorageLocations(companyId?: string): Promise<StorageLocation[]> {
+        let query = supabase.from('storage_locations').select('*');
+        if (companyId) query = query.eq('company_id', companyId);
+        const { data, error } = await query.order('nome');
+        if (error) throw error;
+        return (data || []).map(mapStorageLocation);
+    },
+    async createStorageLocation(location: any): Promise<StorageLocation> {
+        const { data, error } = await supabase.from('storage_locations').insert({
+            company_id: location.companyId,
+            nome: location.nome,
+            localizacao: location.localizacao,
+            ativo: location.ativo ?? true
+        }).select().single();
+        if (error) throw error;
+        return mapStorageLocation(data);
+    },
+    async updateStorageLocation(id: string, location: Partial<StorageLocation>): Promise<void> {
+        const payload: any = {};
+        if (location.nome !== undefined) payload.nome = location.nome;
+        if (location.localizacao !== undefined) payload.localizacao = location.localizacao;
+        if (location.ativo !== undefined) payload.ativo = location.ativo;
+        const { error } = await supabase.from('storage_locations').update(payload).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteStorageLocation(id: string): Promise<void> {
+        const { error } = await supabase.from('storage_locations').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    // Movimentações
+    async getStockMovements(companyId?: string, productId?: string): Promise<StockMovement[]> {
+        let query = supabase.from('stock_movements').select('*');
+        if (companyId) query = query.eq('company_id', companyId);
+        if (productId) query = query.eq('produto_id', productId);
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(mapStockMovement);
+    },
+    async createStockMovement(movement: any): Promise<StockMovement> {
+        const { data, error } = await supabase.from('stock_movements').insert({
+            company_id: movement.companyId,
+            produto_id: movement.produtoId,
+            tipo: movement.tipo,
+            quantidade: movement.quantidade,
+            origem_id: movement.origemId,
+            destino_id: movement.destinoId,
+            fornecedor_id: movement.fornecedorId,
+            document_ref: movement.documentRef,
+            user_id: movement.userId,
+            user_name: movement.userName,
+            observacoes: movement.observacoes
+        }).select().single();
+        if (error) throw error;
+        return mapStockMovement(data);
     },
 
     // Chat

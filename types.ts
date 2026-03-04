@@ -74,8 +74,13 @@ export interface Company {
   document: string;
   email: string;
   phone: string;
-  address: string;
-  city: string;
+  zipCode?: string; // CEP (Novo para NF-e)
+  address: string; // Logradouro
+  number?: string; // Número (Novo para NF-e)
+  complement?: string; // Complemento (Novo para NF-e)
+  neighborhood?: string; // Bairro (Novo para NF-e)
+  city: string; // Município
+  state?: string; // UF (Novo para NF-e)
   plan: CompanyPlan;
   period: CompanyPeriod;
   monthlyFee: number;
@@ -104,15 +109,20 @@ export interface Customer {
   id: string;
   companyId: string;
   name: string;
-  document?: string;
+  corporateName?: string; // Razão Social (Novo para NF-e)
+  document?: string; // CNPJ/CPF
   customerType?: 'COMPLETO' | 'BALCAO';
+  email?: string; // E-mail (Novo para NF-e)
   phone: string;
-  city: string;
-  address: string;
-  number?: string;
+  zipCode?: string; // CEP (Novo para NF-e)
+  address: string; // Logradouro
+  number?: string; // Número
+  complement?: string; // Complemento (Novo para NF-e)
+  neighborhood?: string; // Bairro (Novo para NF-e)
+  city: string; // Município
+  estado?: string; // ERP V4 - UF
   sector?: string;
   notes: string;
-  estado?: string; // ERP V4
   ativo?: boolean; // ERP V4 Soft Delete
   createdAt: string;
 }
@@ -120,11 +130,18 @@ export interface Customer {
 export interface Supplier {
   id: string;
   companyId: string;
-  name: string;
-  document?: string;
+  name: string; // Nome Fantasia ou Apelido
+  corporateName?: string; // Razão Social (Novo para NF-e)
+  document?: string; // CPF/CNPJ
   phone?: string;
   email?: string;
-  city?: string;
+  zipCode?: string; // CEP (Novo para NF-e)
+  address?: string; // Logradouro (Novo para NF-e)
+  number?: string; // Número (Novo para NF-e)
+  complement?: string; // Complemento (Novo para NF-e)
+  neighborhood?: string; // Bairro (Novo para NF-e)
+  city?: string; // Município
+  state?: string; // UF (Novo para NF-e)
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
 }
@@ -194,6 +211,58 @@ export interface ServiceOrder {
   cancellationReason?: string;
   posts: OrderPost[];
   attachments?: OrderAttachment[];
+}
+
+export interface Product {
+  id: string;
+  companyId: string;
+  nome: string;
+  descricao?: string;
+  imagens?: string[]; // Array de URLs das fotos
+  precoVenda: number;
+  sku: string;
+  peso?: number;
+  altura?: number;
+  largura?: number;
+  comprimento?: number;
+  quantidadeEstoque: number;
+  ean?: string;
+  ncm?: string;
+  variacoes?: any; // JSON para variações
+  categoria?: string;
+  marca?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  fornecedorId?: string;
+  valorCompra?: number;
+  margemLucro?: number; // Porcentagem para venda
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+}
+
+export interface StorageLocation {
+  id: string;
+  companyId: string;
+  nome: string;
+  localizacao?: string;
+  ativo: boolean;
+  createdAt: string;
+}
+
+export interface StockMovement {
+  id: string;
+  companyId: string;
+  produtoId: string;
+  tipo: 'ENTRADA' | 'SAIDA' | 'TRANSFERENCIA' | 'AJUSTE';
+  quantidade: number;
+  origemId?: string;
+  destinoId?: string;
+  fornecedorId?: string;
+  documentRef?: string;
+  userId: string;
+  userName: string;
+  observacoes?: string;
+  createdAt: string;
 }
 
 // ==========================================

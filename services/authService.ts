@@ -17,8 +17,9 @@ const mapAuthUser = (sbUser: any): User => ({
 
 export const authService: IAuthService = {
     async signIn(email: string, password: string) {
+        const normalizedEmail = email.toLowerCase().trim();
         const { data, error: authError } = await supabase.auth.signInWithPassword({
-            email,
+            email: normalizedEmail,
             password
         });
 
@@ -137,8 +138,9 @@ export const authService: IAuthService = {
 
 
     async signUp(email: string, password: string, name: string, companyId: string) {
+        const normalizedEmail = email.toLowerCase().trim();
         const { data, error } = await supabase.auth.signUp({
-            email,
+            email: normalizedEmail,
             password,
             options: {
                 data: {
@@ -170,10 +172,11 @@ export const authService: IAuthService = {
     async adminCreateUser(userData: { email: string, password?: string, name: string, role: string, company_id: string, phone?: string, city?: string }) {
         // Se não houver senha, gera uma aleatória de 8 caracteres
         const password = userData.password || Math.random().toString(36).slice(-8);
+        const normalizedEmail = userData.email.toLowerCase().trim();
 
         const { data, error } = await supabase.functions.invoke('create-user', {
             body: {
-                email: userData.email,
+                email: normalizedEmail,
                 password,
                 name: userData.name,
                 role: userData.role,

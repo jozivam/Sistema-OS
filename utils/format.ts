@@ -1,4 +1,3 @@
-
 export const maskDocument = (value: string) => {
     const cleanValue = value.replace(/\D/g, '');
 
@@ -36,4 +35,11 @@ export const maskPhone = (value: string) => {
             .replace(/(\d{5})(\d{1,2})/, '$1-$2')
             .replace(/(-\d{4})\d+?$/, '$1');
     }
+};
+
+export const maskCEP = (value: string) => {
+    const cleanValue = value.replace(/\D/g, '');
+    return cleanValue
+        .replace(/(\d{5})(\d)/, '$1-$2')
+        .replace(/(-\d{3})\d+?$/, '$1');
 };

@@ -31,6 +31,7 @@ import LandingPage from './pages/LandingPage';
 import EstoqueProdutos from './pages/EstoqueProdutos';
 import EstoqueDepositos from './pages/EstoqueDepositos';
 import EstoqueMovimentacoes from './pages/EstoqueMovimentacoes';
+import EstoqueFornecedores from './pages/EstoqueFornecedores';
 import Pdv from './pages/Pdv';
 
 const App: React.FC = () => {
@@ -216,9 +217,11 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, company, onUserCha
         />
         <Route path="/ordens" element={<Orders />} />
         <Route path="/ordens/:id" element={<OrderDetails />} />
+        <Route path="/estoque" element={<Navigate to="/estoque/produtos" replace />} />
         <Route path="/estoque/produtos" element={<EstoqueProdutos />} />
         <Route path="/estoque/depositos" element={<EstoqueDepositos />} />
         <Route path="/estoque/movimentacoes" element={<EstoqueMovimentacoes />} />
+        <Route path="/estoque/fornecedores" element={<EstoqueFornecedores />} />
         <Route path="/pdv" element={(isAdmin || isTrial) ? <Pdv /> : <Navigate to="/dashboard" replace />} />
         <Route path="/usuarios" element={(isAdmin || isTrial) ? <Users /> : <Navigate to="/dashboard" replace />} />
         <Route

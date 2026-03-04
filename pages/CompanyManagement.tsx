@@ -5,7 +5,7 @@ import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
 import { Company, User, UserRole, AppState, CompanyPlan, CompanyPayment, SystemSettings } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
-import { maskDocument, maskPhone } from '../utils/format';
+import { maskDocument, maskPhone, maskCEP } from '../utils/format';
 
 const CompanyManagement: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -41,8 +41,13 @@ const CompanyManagement: React.FC = () => {
     document: '',
     email: '',
     phone: '',
+    zipCode: '',
     address: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
     city: '',
+    state: '',
     plan: CompanyPlan.OURO,
     monthlyFee: 0,
     refundedAmount: 0,
@@ -84,8 +89,13 @@ const CompanyManagement: React.FC = () => {
           document: companyData.document,
           email: companyData.email || '',
           phone: companyData.phone || '',
+          zipCode: companyData.zipCode || '',
           address: companyData.address || '',
+          number: companyData.number || '',
+          complement: companyData.complement || '',
+          neighborhood: companyData.neighborhood || '',
           city: companyData.city || '',
+          state: companyData.state || '',
           plan: companyData.plan,
           monthlyFee: companyData.monthlyFee,
           refundedAmount: companyData.refundedAmount || 0,
@@ -786,7 +796,7 @@ const CompanyManagement: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Endereço Fiscal</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Endereço Fiscal (Rua/Av)</label>
                     <input
                       type="text" required
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
@@ -795,12 +805,57 @@ const CompanyManagement: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Cidade / UF</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Número</label>
+                    <input
+                      type="text" required
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
+                      value={companyFormData.number}
+                      onChange={e => setCompanyFormData({ ...companyFormData, number: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Complemento</label>
+                    <input
+                      type="text"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
+                      value={companyFormData.complement}
+                      onChange={e => setCompanyFormData({ ...companyFormData, complement: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Bairro</label>
+                    <input
+                      type="text" required
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
+                      value={companyFormData.neighborhood}
+                      onChange={e => setCompanyFormData({ ...companyFormData, neighborhood: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Cidade</label>
                     <input
                       type="text" required
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
                       value={companyFormData.city}
                       onChange={e => setCompanyFormData({ ...companyFormData, city: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">UF</label>
+                    <input
+                      type="text" required maxLength={2}
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm uppercase"
+                      value={companyFormData.state}
+                      onChange={e => setCompanyFormData({ ...companyFormData, state: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">CEP</label>
+                    <input
+                      type="text" required maxLength={9}
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm uppercase"
+                      value={companyFormData.zipCode}
+                      onChange={e => setCompanyFormData({ ...companyFormData, zipCode: maskCEP(e.target.value) })}
                     />
                   </div>
                 </div>

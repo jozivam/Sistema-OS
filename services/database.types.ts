@@ -1,6 +1,7 @@
 import {
     Company, User, Customer, ServiceOrder,
-    ChatMessage, CompanyPayment, AppNotification
+    ChatMessage, CompanyPayment, AppNotification, Supplier,
+    Product, StorageLocation, StockMovement
 } from '../types';
 
 export interface IDatabaseService {
@@ -25,6 +26,13 @@ export interface IDatabaseService {
     updateCustomer(id: string, customer: Partial<Customer>): Promise<void>;
     deleteCustomer(id: string): Promise<void>;
 
+    // Fornecedores
+    getSuppliers(companyId?: string): Promise<Supplier[]>;
+    getSupplier(id: string): Promise<Supplier | null>;
+    createSupplier(supplier: any): Promise<Supplier>;
+    updateSupplier(id: string, supplier: Partial<Supplier>): Promise<void>;
+    deleteSupplier(id: string): Promise<void>;
+
     // Ordens de Serviço
     getOrders(companyId?: string, techId?: string): Promise<ServiceOrder[]>;
     getOrder(id: string): Promise<ServiceOrder | null>;
@@ -32,6 +40,23 @@ export interface IDatabaseService {
     updateOrder(id: string, order: Partial<ServiceOrder>): Promise<void>;
     deleteOrder(id: string): Promise<void>;
     generateAIReport(orderId: string, description: string, history: string): Promise<string>;
+
+    // Produtos
+    getProducts(companyId?: string): Promise<Product[]>;
+    getProduct(id: string): Promise<Product | null>;
+    createProduct(product: any): Promise<Product>;
+    updateProduct(id: string, product: Partial<Product>): Promise<void>;
+    deleteProduct(id: string): Promise<void>;
+
+    // Locais de Armazenamento (Depósitos)
+    getStorageLocations(companyId?: string): Promise<StorageLocation[]>;
+    createStorageLocation(location: any): Promise<StorageLocation>;
+    updateStorageLocation(id: string, location: Partial<StorageLocation>): Promise<void>;
+    deleteStorageLocation(id: string): Promise<void>;
+
+    // Movimentações
+    getStockMovements(companyId?: string, productId?: string): Promise<StockMovement[]>;
+    createStockMovement(movement: any): Promise<StockMovement>;
 
 
     // Chat

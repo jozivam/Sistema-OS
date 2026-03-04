@@ -247,8 +247,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
       isDropdown: true,
       subItems: [
         { path: '/estoque/produtos', label: 'Produtos', icon: 'fa-boxes-stacked' },
+        { path: '/estoque/fornecedores', label: 'Fornecedores', icon: 'fa-truck-field' },
         { path: '/estoque/depositos', label: 'Estoque / Locais', icon: 'fa-warehouse' },
-        { path: '/estoque/movimentacoes', label: 'Histórico', icon: 'fa-arrow-right-arrow-left' }
+        { path: '/estoque/movimentacoes', label: 'Movimentação', icon: 'fa-arrow-right-arrow-left' }
       ]
     });
 

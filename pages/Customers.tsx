@@ -16,6 +16,7 @@ import {
 import { Customer, ServiceOrder, OrderStatus, UserRole, User, Company } from '../types';
 import { Link } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
+import { maskDocument, maskPhone, maskCEP } from '../utils/format';
 
 const Customers: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -105,7 +106,7 @@ const Customers: React.FC = () => {
   };
 
   const [formData, setFormData] = useState({
-    name: '', phone: '', city: '', address: '', number: '', sector: '', notes: ''
+    name: '', corporateName: '', document: '', email: '', phone: '', city: '', address: '', number: '', complement: '', neighborhood: '', zipCode: '', estado: '', sector: '', notes: ''
   });
 
   const [initialOS, setInitialOS] = useState({
@@ -129,12 +130,7 @@ const Customers: React.FC = () => {
     }
   }, [company, users, currentUser]);
 
-  const maskPhone = (value: string) => {
-    const n = value.replace(/\D/g, '');
-    if (n.length <= 2) return n;
-    if (n.length <= 7) return `(${n.slice(0, 2)})${n.slice(2)}`;
-    return `(${n.slice(0, 2)})${n.slice(2, 7)}-${n.slice(7, 11)}`;
-  };
+
 
   const uniqueCities = Array.from(new Set(customers.map(c => c.city).filter(Boolean))).sort();
 
@@ -158,8 +154,10 @@ const Customers: React.FC = () => {
   const handleOpenEditModal = (customer: Customer) => {
     setEditingCustomer(customer);
     setFormData({
-      name: customer.name, phone: customer.phone, city: customer.city,
-      address: customer.address, number: customer.number || '',
+      name: customer.name, corporateName: customer.corporateName || '',
+      document: customer.document || '', email: customer.email || '', phone: customer.phone, city: customer.city,
+      address: customer.address, number: customer.number || '', complement: customer.complement || '',
+      neighborhood: customer.neighborhood || '', zipCode: customer.zipCode || '', estado: customer.estado || '',
       sector: customer.sector || '', notes: customer.notes
     });
     setOpenOSNow(false);
@@ -270,7 +268,7 @@ const Customers: React.FC = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', phone: '', city: '', address: '', number: '', sector: '', notes: '' });
+    setFormData({ name: '', corporateName: '', document: '', email: '', phone: '', city: '', address: '', number: '', complement: '', neighborhood: '', zipCode: '', estado: '', sector: '', notes: '' });
     setInitialOS({
       description: '',
       type: company?.settings.orderTypes[0] || 'Suporte',
@@ -463,16 +461,24 @@ const Customers: React.FC = () => {
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome Completo</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome Completo / Fantasia</label>
                       <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Razão Social</label>
+                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.corporateName} onChange={e => setFormData({ ...formData, corporateName: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">CPF / CNPJ</label>
+                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.document} onChange={e => setFormData({ ...formData, document: maskDocument(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">E-mail</label>
+                      <input type="email" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium lowercase" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">WhatsApp / Fone</label>
                       <input type="text" required maxLength={14} placeholder="(00)00000-0000" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-blue-600" value={formData.phone} onChange={e => setFormData({ ...formData, phone: maskPhone(e.target.value) })} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cidade e UF</label>
-                      <input type="text" required placeholder="Ex: Palmas/TO" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
                     </div>
                   </div>
                 </div>
@@ -483,19 +489,35 @@ const Customers: React.FC = () => {
                     Localização de Atendimento
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">CEP</label>
+                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium uppercase" value={formData.zipCode} onChange={e => setFormData({ ...formData, zipCode: maskCEP(e.target.value) })} />
+                    </div>
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Logradouro (Rua/Av)</label>
                       <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Número / Complemento</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Número</label>
                       <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" value={formData.number} onChange={e => setFormData({ ...formData, number: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Complemento</label>
+                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" value={formData.complement} onChange={e => setFormData({ ...formData, complement: e.target.value })} />
                     </div>
                     <div className="md:col-span-1">
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Bairro / Setor</label>
-                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.sector} onChange={e => setFormData({ ...formData, sector: e.target.value })} />
+                      <input type="text" className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.sector} onChange={e => { setFormData({ ...formData, sector: e.target.value, neighborhood: e.target.value }); }} />
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cidade</label>
+                      <input type="text" required className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">UF</label>
+                      <input type="text" maxLength={2} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium uppercase" value={formData.estado} onChange={e => setFormData({ ...formData, estado: e.target.value.toUpperCase() })} />
+                    </div>
+                    <div className="md:col-span-3">
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Notas de Acesso / Obs. Internas</label>
                       <textarea className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" rows={2} placeholder="Ex: Cerca elétrica no muro, cachorro bravo, ligar antes..." value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
                     </div>
