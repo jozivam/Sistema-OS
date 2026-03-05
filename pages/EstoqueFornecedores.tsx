@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Edit, Trash2, MapPin, Building2, Phone } from 'lucide-react';
+import { format } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Search, Filter, Edit, Trash2, MapPin, Building2, Phone, Package, Calendar, X, Info, FileText } from 'lucide-react';
 import { dbService } from '../services/dbService';
-import { Supplier } from '../types';
+import { Supplier, Product, StockMovement } from '../types';
 import { authService } from '../services/authService';
 import { maskDocument, maskPhone, maskCEP } from '../utils/format';
 
@@ -13,6 +15,24 @@ export default function EstoqueFornecedores() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isEditing, setIsEditing] = useState<string | null>(null);
+
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+    const [supplierMovements, setSupplierMovements] = useState<StockMovement[]>([]);
+    const [productsCache, setProductsCache] = useState<Record<string, Product>>({});
+    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+
+    const overlayVariants = {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { duration: 0.3 } },
+        exit: { opacity: 0, transition: { duration: 0.3 } }
+    };
+
+    const drawerVariants = {
+        hidden: { x: '100%', opacity: 0.5 },
+        visible: { x: '0%', opacity: 1, transition: { type: 'spring', damping: 25, stiffness: 200 } },
+        exit: { x: '100%', opacity: 0.5, transition: { duration: 0.3 } }
+    };
 
     const formInicial = {
         name: '',
@@ -139,6 +159,30 @@ export default function EstoqueFornecedores() {
         setIsModalOpen(false);
     };
 
+    const openSupplierDetails = async (fornecedor: Supplier) => {
+        setSelectedSupplier(fornecedor);
+        setIsDetailsOpen(true);
+        setIsLoadingDetails(true);
+        try {
+            if (!companyId) return;
+
+            // Busca as movimentações do fornecedor (apenas ENTRADA)
+            const moves = await dbService.getStockMovements(companyId);
+            const filteredMoves = moves.filter(m => m.fornecedorId === fornecedor.id && m.tipo === 'ENTRADA');
+            setSupplierMovements(filteredMoves);
+
+            // Carrega os produtos para ter o mapa de nomes
+            const pMap: Record<string, Product> = {};
+            const allProducts = await dbService.getProducts(companyId);
+            allProducts.forEach(p => { pMap[p.id] = p; });
+            setProductsCache(pMap);
+        } catch (error) {
+            console.error("Erro ao carregar detalhes do fornecedor:", error);
+        } finally {
+            setIsLoadingDetails(false);
+        }
+    };
+
     const filteredFornecedores = fornecedores.filter(f =>
         f.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.document?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -207,9 +251,14 @@ export default function EstoqueFornecedores() {
                                     <td colSpan={6} className="text-center py-6 text-gray-500">Nenhum fornecedor encontrado.</td>
                                 </tr>
                             ) : filteredFornecedores.map((f) => (
-                                <tr key={f.id} className="hover:bg-gray-50/50 transition-colors">
+                                <tr key={f.id} className="hover:bg-gray-50/50 transition-colors group">
                                     <td className="px-6 py-4">
-                                        <div className="font-bold text-gray-900 border-b-2 inline-block border-transparent hover:border-blue-500 cursor-pointer">{f.name}</div>
+                                        <div
+                                            className="font-bold text-gray-900 border-b-2 inline-block border-transparent hover:border-blue-500 cursor-pointer"
+                                            onClick={() => openSupplierDetails(f)}
+                                        >
+                                            {f.name}
+                                        </div>
                                         <div className="text-xs font-semibold text-gray-500 mt-0.5">{f.corporateName}</div>
                                     </td>
                                     <td className="px-6 py-4 text-sm font-semibold text-gray-600">{f.document || '-'}</td>
@@ -348,6 +397,117 @@ export default function EstoqueFornecedores() {
                     </div>
                 </div>
             )}
+
+            {/* Sidebar Detalhes Fornecedor (Drawer) */}
+            <AnimatePresence>
+                {
+                    isDetailsOpen && selectedSupplier && (
+                        <div className="fixed inset-0 z-[300] flex justify-end">
+                            <motion.div
+                                className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                variants={overlayVariants}
+                                initial="hidden"
+                                animate="visible"
+                                exit="exit"
+                                onClick={() => setIsDetailsOpen(false)}
+                            />
+                            <motion.div
+                                className="relative bg-white w-full max-w-md h-full shadow-2xl flex flex-col border-l border-slate-100"
+                                variants={drawerVariants}
+                                initial="hidden"
+                                animate="visible"
+                                exit="exit"
+                            >
+                                <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">{selectedSupplier.name}</h3>
+                                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">CNPJ/CPF: {selectedSupplier.document || 'N/A'}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsDetailsOpen(false)}
+                                        className="w-10 h-10 flex items-center justify-center bg-slate-100 border border-slate-200 text-slate-400 hover:text-slate-900 rounded-xl transition-colors hover:bg-slate-200"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="p-8 space-y-8 flex-1 overflow-y-auto custom-scrollbar bg-white">
+
+                                    {/* Info Blocks Básicas */}
+                                    <div className="space-y-6">
+                                        <div className="flex gap-4 group">
+                                            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-sm">
+                                                <Phone size={24} />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contato</p>
+                                                <p className="font-black text-slate-900">{selectedSupplier.phone || 'Sem telefone'}</p>
+                                                <p className="text-xs font-bold text-slate-500">{selectedSupplier.email || 'Sem email'}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-4 group">
+                                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-sm">
+                                                <MapPin size={24} />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Endereço</p>
+                                                <p className="font-black text-slate-900">{selectedSupplier.address || 'Não preenchido'}</p>
+                                                <p className="text-xs font-bold text-slate-500">
+                                                    {[selectedSupplier.city, selectedSupplier.state].filter(Boolean).join(' - ')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Divisor Visual */}
+                                    <div className="border-t border-slate-100 pt-6">
+                                        <h4 className="flex items-center gap-2 text-xs font-black text-slate-600 uppercase tracking-widest mb-4">
+                                            <Package size={16} />
+                                            Histórico de Fornecimento
+                                        </h4>
+
+                                        {isLoadingDetails ? (
+                                            <div className="text-center py-6 text-slate-400 font-bold text-sm bg-slate-50 rounded-2xl border border-slate-100">
+                                                Consultando movimentações...
+                                            </div>
+                                        ) : supplierMovements.length === 0 ? (
+                                            <div className="text-center py-8 text-slate-400 font-bold text-xs uppercase tracking-widest bg-slate-50 rounded-2xl border border-slate-100 border-dashed">
+                                                Nenhum produto fornecido ainda.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {supplierMovements.map(m => (
+                                                    <div key={m.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 transition-colors">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div>
+                                                                <p className="font-black text-slate-900 text-sm">{productsCache[m.produtoId]?.nome || 'Produto Indisponível'}</p>
+                                                                {m.documentRef && (
+                                                                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">NF: {m.documentRef}</p>
+                                                                )}
+                                                            </div>
+                                                            <div className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-black text-[10px]">
+                                                                +{m.quantidade} unid
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                                                            <Calendar size={12} />
+                                                            {m.createdAt ? format(new Date(m.createdAt), "dd/MM/yyyy HH:mm") : 'Data não registrada'}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="p-6 border-t border-slate-100 bg-slate-50 text-center">
+                                    <p className="text-[10px] font-bold text-slate-400">Inteligência de Fornecimento OS Tech</p>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence>
         </div>
     );
 }

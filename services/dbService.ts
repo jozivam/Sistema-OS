@@ -101,7 +101,6 @@ const mapOrder = (raw: any): ServiceOrder => {
         try { attachments = JSON.parse(attachments); } catch { attachments = []; }
     }
 
-    // Normalização de status para evitar erros de case (ex: FINALIZADA vs Finalizada)
     let status = raw.status as string;
     if (status) {
         const s = status.toLowerCase();
@@ -175,9 +174,9 @@ const mapProduct = (raw: any): Product => {
         variacoes: raw.variacoes,
         categoria: raw.categoria,
         marca: raw.marca,
+        unidadeMedida: raw.unidade_medida || 'UN', // Added default 'UN'
         seoTitle: raw.seo_title,
         seoDescription: raw.seo_description,
-        fornecedorId: raw.fornecedor_id,
         valorCompra: Number(raw.valor_compra),
         margemLucro: Number(raw.margem_lucro),
         status: raw.status || 'ACTIVE',
@@ -214,7 +213,6 @@ const mapStockMovement = (raw: any): StockMovement => {
     };
 };
 
-
 export const dbService: IDatabaseService = {
     // Empresas
     async getCompanies(): Promise<Company[]> {
@@ -222,13 +220,11 @@ export const dbService: IDatabaseService = {
         if (error) throw error;
         return (data || []).map(mapCompany);
     },
-
     async getCompany(id: string): Promise<Company | null> {
         const { data, error } = await supabase.from('companies').select('*').eq('id', id).single();
         if (error) return null;
         return mapCompany(data);
     },
-
     async updateCompany(id: string, updates: Partial<Company>) {
         const dbUpdates: any = {};
         if (updates.name) dbUpdates.name = updates.name;
@@ -250,11 +246,9 @@ export const dbService: IDatabaseService = {
         if (updates.status) dbUpdates.status = updates.status;
         if (updates.expiresAt !== undefined) dbUpdates.expires_at = updates.expiresAt;
         if (updates.settings) dbUpdates.settings = updates.settings;
-
         const { error } = await supabase.from('companies').update(dbUpdates).eq('id', id);
         if (error) throw error;
     },
-
     async createCompany(company: Omit<Company, 'id' | 'createdAt'>) {
         const { data, error } = await supabase.from('companies').insert({
             name: company.name,
@@ -274,7 +268,6 @@ export const dbService: IDatabaseService = {
         if (error) throw error;
         return mapCompany(data);
     },
-
     async deleteCompany(id: string) {
         const { error } = await supabase.from('companies').update({ ativo: false }).eq('id', id);
         if (error) throw error;
@@ -289,13 +282,11 @@ export const dbService: IDatabaseService = {
         if (error) return [];
         return (data || []).map(mapUser);
     },
-
     async getUser(id: string): Promise<User | null> {
         const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
         if (error) return null;
         return mapUser(data);
     },
-
     async createUser(userData: Omit<User, 'id'> & { id?: string }) {
         const { data, error } = await supabase.from('users').insert({
             id: userData.id,
@@ -311,7 +302,6 @@ export const dbService: IDatabaseService = {
         if (error) throw error;
         return mapUser(data);
     },
-
     async updateUser(id: string, updates: Partial<User>) {
         const dbUpdates: any = {};
         if (updates.name) dbUpdates.name = updates.name;
@@ -321,11 +311,9 @@ export const dbService: IDatabaseService = {
         if (updates.city) dbUpdates.city = updates.city;
         if (updates.isBlocked !== undefined) dbUpdates.is_blocked = updates.isBlocked;
         if (updates.password) dbUpdates.password = updates.password;
-
         const { error } = await supabase.from('users').update(dbUpdates).eq('id', id);
         if (error) throw error;
     },
-
     async deleteUser(id: string) {
         const { error } = await supabase.from('users').update({ ativo: false }).eq('id', id);
         if (error) throw error;
@@ -343,13 +331,11 @@ export const dbService: IDatabaseService = {
         if (error) return [];
         return (data || []).map(mapCustomer);
     },
-
     async getCustomer(id: string): Promise<Customer | null> {
         const { data, error } = await supabase.from('customers').select('*').eq('id', id).single();
         if (error) return null;
         return mapCustomer(data);
     },
-
     async createCustomer(customer: Omit<Customer, 'id' | 'createdAt'>) {
         const { data, error } = await supabase.from('customers').insert({
             company_id: customer.companyId,
@@ -372,29 +358,15 @@ export const dbService: IDatabaseService = {
         if (error) throw error;
         return mapCustomer(data);
     },
-
     async updateCustomer(id: string, updates: Partial<Customer>) {
         const dbUpdates: any = {};
         if (updates.name) dbUpdates.name = updates.name;
         if (updates.corporateName !== undefined) dbUpdates.corporate_name = updates.corporateName;
         if (updates.document !== undefined) dbUpdates.document = updates.document;
         if (updates.customerType !== undefined) dbUpdates.customer_type = updates.customerType;
-        if (updates.email !== undefined) dbUpdates.email = updates.email;
-        if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
-        if (updates.zipCode !== undefined) dbUpdates.zip_code = updates.zipCode;
-        if (updates.city !== undefined) dbUpdates.city = updates.city;
-        if (updates.address !== undefined) dbUpdates.address = updates.address;
-        if (updates.number !== undefined) dbUpdates.number = updates.number;
-        if (updates.complement !== undefined) dbUpdates.complement = updates.complement;
-        if (updates.neighborhood !== undefined) dbUpdates.neighborhood = updates.neighborhood;
-        if (updates.sector !== undefined) dbUpdates.sector = updates.sector;
-        if (updates.estado !== undefined) dbUpdates.estado = updates.estado;
-        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
-
         const { error } = await supabase.from('customers').update(dbUpdates).eq('id', id);
         if (error) throw error;
     },
-
     async deleteCustomer(id: string) {
         const { error } = await supabase.from('customers').update({ ativo: false }).eq('id', id);
         if (error) throw error;
@@ -403,65 +375,35 @@ export const dbService: IDatabaseService = {
     // Fornecedores
     async getSuppliers(companyId?: string): Promise<Supplier[]> {
         let query = supabase.from('suppliers').select('*').order('name', { ascending: true });
-        if (companyId) {
-            query = query.eq('company_id', companyId);
-        }
+        if (companyId) query = query.eq('company_id', companyId);
         const { data, error } = await query;
         if (error) throw error;
         return (data || []).map(mapSupplier);
     },
-
     async getSupplier(id: string): Promise<Supplier | null> {
         const { data, error } = await supabase.from('suppliers').select('*').eq('id', id).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (!data) return null;
         return mapSupplier(data);
     },
-
     async createSupplier(supplier: Omit<Supplier, 'id' | 'createdAt'>): Promise<Supplier> {
-        const newId = crypto.randomUUID();
         const { data, error } = await supabase.from('suppliers').insert({
-            id: newId,
             company_id: supplier.companyId,
             name: supplier.name,
             corporate_name: supplier.corporateName || null,
             document: supplier.document || null,
             phone: supplier.phone || null,
             email: supplier.email || null,
-            zip_code: supplier.zipCode || null,
-            address: supplier.address || null,
-            number: supplier.number || null,
-            complement: supplier.complement || null,
-            neighborhood: supplier.neighborhood || null,
-            city: supplier.city || null,
-            state: supplier.state || null,
             status: supplier.status || 'ACTIVE',
             created_at: new Date().toISOString()
         }).select().single();
         if (error) throw error;
         return mapSupplier(data);
     },
-
     async updateSupplier(id: string, updates: Partial<Supplier>) {
-        const mappedUpdates: any = {};
-        if (updates.name !== undefined) mappedUpdates.name = updates.name;
-        if (updates.corporateName !== undefined) mappedUpdates.corporate_name = updates.corporateName;
-        if (updates.document !== undefined) mappedUpdates.document = updates.document;
-        if (updates.phone !== undefined) mappedUpdates.phone = updates.phone;
-        if (updates.email !== undefined) mappedUpdates.email = updates.email;
-        if (updates.zipCode !== undefined) mappedUpdates.zip_code = updates.zipCode;
-        if (updates.address !== undefined) mappedUpdates.address = updates.address;
-        if (updates.number !== undefined) mappedUpdates.number = updates.number;
-        if (updates.complement !== undefined) mappedUpdates.complement = updates.complement;
-        if (updates.neighborhood !== undefined) mappedUpdates.neighborhood = updates.neighborhood;
-        if (updates.city !== undefined) mappedUpdates.city = updates.city;
-        if (updates.state !== undefined) mappedUpdates.state = updates.state;
-        if (updates.status !== undefined) mappedUpdates.status = updates.status;
-
-        const { error } = await supabase.from('suppliers').update(mappedUpdates).eq('id', id);
+        const { error } = await supabase.from('suppliers').update(updates).eq('id', id);
         if (error) throw error;
     },
-
     async deleteSupplier(id: string) {
         const { error } = await supabase.from('suppliers').delete().eq('id', id);
         if (error) throw error;
@@ -475,69 +417,28 @@ export const dbService: IDatabaseService = {
             if (techId) orders = orders.filter((o: any) => o.techId === techId);
             return orders;
         }
-
-        let query = supabase
-            .from('service_orders')
-            .select('*, customers(name), users(name)')
-            .eq('ativo', true);
-
+        let query = supabase.from('service_orders').select('*, customers(name), users(name)').eq('ativo', true);
         if (companyId) query = query.eq('company_id', companyId);
         if (techId) query = query.eq('tech_id', techId);
-
         const { data, error } = await query.order('created_at', { ascending: false });
-
         if (error) return [];
         return (data || []).map(mapOrder);
     },
-
-    async createOrder(order: Omit<ServiceOrder, 'id' | 'createdAt'>) {
-        const { data, error } = await supabase.from('service_orders').insert({
-            company_id: order.companyId,
-            customer_id: order.customerId,
-            tech_id: order.techId,
-            type: order.type,
-            description: order.description,
-            status: order.status,
-            scheduled_date: order.scheduledDate,
-            posts: [],
-            attachments: order.attachments || []
-        }).select('*, customers(name), users(name)').single();
-
-        if (error) throw error;
-        return mapOrder(data);
-    },
-
     async getOrder(id: string): Promise<ServiceOrder | null> {
-        const { data, error } = await supabase
-            .from('service_orders')
-            .select('*, customers(name), users(name)')
-            .eq('id', id)
-            .single();
-
+        const { data, error } = await supabase.from('service_orders').select('*, customers(name), users(name)').eq('id', id).single();
         if (error) return null;
         return mapOrder(data);
     },
-
-    async updateOrder(id: string, updates: Partial<ServiceOrder>) {
-        if (id.startsWith('trial-')) return; // Ignore on trial mode
-        const dbUpdates: any = {};
-        if (updates.status) dbUpdates.status = updates.status;
-        if (updates.description !== undefined) dbUpdates.description = updates.description;
-        if (updates.dailyHistory !== undefined) dbUpdates.daily_history = updates.dailyHistory;
-        if (updates.aiReport !== undefined) dbUpdates.ai_report = updates.aiReport;
-        if (updates.finishedAt !== undefined) dbUpdates.finished_at = updates.finishedAt;
-        if (updates.cancellationReason !== undefined) dbUpdates.cancellation_reason = updates.cancellationReason;
-        if (updates.scheduledDate !== undefined) dbUpdates.scheduled_date = updates.scheduledDate;
-        if (updates.type) dbUpdates.type = updates.type;
-        if (updates.techId !== undefined) dbUpdates.tech_id = updates.techId || null;
-        if (updates.posts) dbUpdates.posts = updates.posts;
-        if (updates.attachments) dbUpdates.attachments = updates.attachments;
-
-        const { error } = await supabase.from('service_orders').update(dbUpdates).eq('id', id);
+    async createOrder(order: any): Promise<ServiceOrder> {
+        const { data, error } = await supabase.from('service_orders').insert(order).select('*, customers(name), users(name)').single();
+        if (error) throw error;
+        return mapOrder(data);
+    },
+    async updateOrder(id: string, order: Partial<ServiceOrder>): Promise<void> {
+        const { error } = await supabase.from('service_orders').update(order).eq('id', id);
         if (error) throw error;
     },
-
-    async deleteOrder(id: string) {
+    async deleteOrder(id: string): Promise<void> {
         const { error } = await supabase.from('service_orders').update({ ativo: false }).eq('id', id);
         if (error) throw error;
     },
@@ -555,58 +456,59 @@ export const dbService: IDatabaseService = {
         if (error) return null;
         return mapProduct(data);
     },
-    async createProduct(product: any): Promise<Product> {
+    async createProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
         const payload = {
             company_id: product.companyId,
             nome: product.nome,
             descricao: product.descricao,
             imagens: product.imagens,
-            preco_venda: product.precoVenda,
+            preco_venda: Number(product.precoVenda),
             sku: product.sku,
-            peso: product.peso,
-            altura: product.altura,
-            largura: product.largura,
-            comprimento: product.comprimento,
-            quantidade_estoque: product.quantidadeEstoque,
+            peso: Number(product.peso || 0),
+            altura: Number(product.altura || 0),
+            largura: Number(product.largura || 0),
+            comprimento: Number(product.comprimento || 0),
+            quantidade_estoque: 0,
             ean: product.ean,
             ncm: product.ncm,
             variacoes: product.variacoes,
             categoria: product.categoria,
             marca: product.marca,
+            unidade_medida: product.unidadeMedida,
             seo_title: product.seoTitle,
             seo_description: product.seoDescription,
-            fornecedor_id: product.fornecedorId,
-            valor_compra: product.valorCompra,
-            margem_lucro: product.margemLucro,
+            valor_compra: Number(product.valorCompra || 0),
+            margem_lucro: Number(product.margemLucro || 0),
             status: product.status || 'ACTIVE'
         };
+
         const { data, error } = await supabase.from('products').insert(payload).select().single();
         if (error) throw error;
+
         return mapProduct(data);
     },
     async updateProduct(id: string, product: Partial<Product>): Promise<void> {
-        const payload: any = {};
-        if (product.nome !== undefined) payload.nome = product.nome;
-        if (product.descricao !== undefined) payload.descricao = product.descricao;
-        if (product.imagens !== undefined) payload.imagens = product.imagens;
-        if (product.precoVenda !== undefined) payload.preco_venda = product.precoVenda;
-        if (product.sku !== undefined) payload.sku = product.sku;
-        if (product.peso !== undefined) payload.peso = product.peso;
-        if (product.altura !== undefined) payload.altura = product.altura;
-        if (product.largura !== undefined) payload.largura = product.largura;
-        if (product.comprimento !== undefined) payload.comprimento = product.comprimento;
-        if (product.quantidadeEstoque !== undefined) payload.quantidade_estoque = product.quantidadeEstoque;
-        if (product.ean !== undefined) payload.ean = product.ean;
-        if (product.ncm !== undefined) payload.ncm = product.ncm;
-        if (product.variacoes !== undefined) payload.variacoes = product.variacoes;
-        if (product.categoria !== undefined) payload.categoria = product.categoria;
-        if (product.marca !== undefined) payload.marca = product.marca;
-        if (product.seoTitle !== undefined) payload.seo_title = product.seoTitle;
-        if (product.seoDescription !== undefined) payload.seo_description = product.seoDescription;
-        if (product.fornecedorId !== undefined) payload.fornecedor_id = product.fornecedorId;
-        if (product.valorCompra !== undefined) payload.valor_compra = product.valorCompra;
-        if (product.margemLucro !== undefined) payload.margem_lucro = product.margemLucro;
-        if (product.status !== undefined) payload.status = product.status;
+        const payload: any = {
+            nome: product.nome,
+            descricao: product.descricao,
+            sku: product.sku,
+            ean: product.ean,
+            ncm: product.ncm,
+            categoria: product.categoria,
+            marca: product.marca,
+            unidade_medida: product.unidadeMedida,
+            preco_venda: product.precoVenda !== undefined ? Number(product.precoVenda) : undefined,
+            valor_compra: product.valorCompra !== undefined ? Number(product.valorCompra) : undefined,
+            margem_lucro: product.margemLucro !== undefined ? Number(product.margemLucro) : undefined,
+            peso: product.peso !== undefined ? Number(product.peso) : undefined,
+            altura: product.altura !== undefined ? Number(product.altura) : undefined,
+            largura: product.largura !== undefined ? Number(product.largura) : undefined,
+            comprimento: product.comprimento !== undefined ? Number(product.comprimento) : undefined,
+            imagens: product.imagens,
+            status: product.status
+        };
+
+        Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
 
         const { error } = await supabase.from('products').update(payload).eq('id', id);
         if (error) throw error;
@@ -616,34 +518,32 @@ export const dbService: IDatabaseService = {
         if (error) throw error;
     },
 
-    // Locais de Armazenamento
+    // Locais de Estoque
     async getStorageLocations(companyId?: string): Promise<StorageLocation[]> {
-        let query = supabase.from('storage_locations').select('*');
+        if (!companyId) return [];
+        let query = supabase.from('storage_locations').select('*').eq('ativo', true);
         if (companyId) query = query.eq('company_id', companyId);
         const { data, error } = await query.order('nome');
         if (error) throw error;
         return (data || []).map(mapStorageLocation);
     },
     async createStorageLocation(location: any): Promise<StorageLocation> {
-        const { data, error } = await supabase.from('storage_locations').insert({
-            company_id: location.companyId,
+        const dbLocation = {
             nome: location.nome,
-            localizacao: location.localizacao,
+            localizacao: location.localizacao || '',
+            company_id: location.companyId || location.company_id,
             ativo: location.ativo ?? true
-        }).select().single();
+        };
+        const { data, error } = await supabase.from('storage_locations').insert(dbLocation).select().single();
         if (error) throw error;
         return mapStorageLocation(data);
     },
     async updateStorageLocation(id: string, location: Partial<StorageLocation>): Promise<void> {
-        const payload: any = {};
-        if (location.nome !== undefined) payload.nome = location.nome;
-        if (location.localizacao !== undefined) payload.localizacao = location.localizacao;
-        if (location.ativo !== undefined) payload.ativo = location.ativo;
-        const { error } = await supabase.from('storage_locations').update(payload).eq('id', id);
+        const { error } = await supabase.from('storage_locations').update(location).eq('id', id);
         if (error) throw error;
     },
     async deleteStorageLocation(id: string): Promise<void> {
-        const { error } = await supabase.from('storage_locations').delete().eq('id', id);
+        const { error } = await supabase.from('storage_locations').update({ ativo: false }).eq('id', id);
         if (error) throw error;
     },
 
@@ -657,476 +557,220 @@ export const dbService: IDatabaseService = {
         return (data || []).map(mapStockMovement);
     },
     async createStockMovement(movement: any): Promise<StockMovement> {
-        const { data, error } = await supabase.from('stock_movements').insert({
-            company_id: movement.companyId,
-            produto_id: movement.produtoId,
+        const dbMovement = {
+            company_id: movement.companyId || movement.company_id,
+            produto_id: movement.produtoId || movement.produto_id,
             tipo: movement.tipo,
             quantidade: movement.quantidade,
-            origem_id: movement.origemId,
-            destino_id: movement.destinoId,
-            fornecedor_id: movement.fornecedorId,
-            document_ref: movement.documentRef,
-            user_id: movement.userId,
-            user_name: movement.userName,
-            observacoes: movement.observacoes
-        }).select().single();
+            origem_id: movement.origemId || movement.origem_id || null,
+            destino_id: movement.destinoId || movement.destino_id || null,
+            fornecedor_id: movement.fornecedorId || movement.fornecedor_id || null,
+            document_ref: movement.documentRef || movement.document_ref || '',
+            user_id: movement.userId || movement.user_id,
+            user_name: movement.userName || movement.user_name,
+            observacoes: movement.observacoes || ''
+        };
+        const { data, error } = await supabase.from('stock_movements').insert(dbMovement).select().single();
         if (error) throw error;
         return mapStockMovement(data);
     },
 
+    async getProductBalance(productId: string, locationId: string): Promise<number> {
+        // Busca todas as movimentações do produto que envolvem este local
+        const { data, error } = await supabase
+            .from('stock_movements')
+            .select('tipo, quantidade, origem_id, destino_id')
+            .eq('produto_id', productId)
+            .or(`origem_id.eq.${locationId},destino_id.eq.${locationId}`);
+
+        if (error) throw error;
+
+        let balance = 0;
+        (data || []).forEach(m => {
+            if (m.destino_id === locationId) {
+                // Entrada ou Destino de Transferência
+                balance += Number(m.quantidade);
+            } else if (m.origem_id === locationId) {
+                // Saída ou Origem de Transferência
+                balance -= Number(m.quantidade);
+            }
+        });
+        return balance;
+    },
+
+    async deleteStockMovement(movementId: string): Promise<void> {
+        const { error } = await supabase
+            .from('stock_movements')
+            .delete()
+            .eq('id', movementId);
+
+        if (error) throw error;
+    },
+
+    async getStocksByLocation(companyId: string, locationId: string): Promise<Record<string, number>> {
+        const { data, error } = await supabase
+            .from('stock_movements')
+            .select('produto_id, tipo, quantidade, origem_id, destino_id')
+            .eq('company_id', companyId)
+            .or(`origem_id.eq.${locationId},destino_id.eq.${locationId}`);
+
+        if (error) throw error;
+
+        const balances: Record<string, number> = {};
+        (data || []).forEach(m => {
+            const pid = m.produto_id;
+            if (!balances[pid]) balances[pid] = 0;
+
+            if (m.destino_id === locationId) {
+                balances[pid] += Number(m.quantidade);
+            } else if (m.origem_id === locationId) {
+                balances[pid] -= Number(m.quantidade);
+            }
+        });
+        return balances;
+    },
+
+    // Vendas / PDV
+    async getVendas(companyId?: string): Promise<any[]> {
+        let query = supabase.from('vendas').select('*, customers(name)');
+        if (companyId) query = query.eq('company_id', companyId);
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+    async getVenda(id: string): Promise<any | null> {
+        const { data, error } = await supabase.from('vendas').select('*, venda_itens(*, products(*))').eq('id', id).single();
+        if (error) throw error;
+        return data;
+    },
+    async createVenda(venda: any, itens: any[]): Promise<any> {
+        // 1. Criar a Venda
+        const { data: sale, error: saleError } = await supabase.from('vendas').insert(venda).select().single();
+        if (saleError) throw saleError;
+
+        // 2. Criar os Itens
+        const itemsToInsert = itens.map(item => ({
+            venda_id: sale.id,
+            product_id: item.productId,
+            quantidade: item.quantidade,
+            preco_unitario: item.precoUnitario,
+            desconto: item.desconto,
+            subtotal: item.subtotal
+        }));
+
+        const { error: itemsError } = await supabase.from('venda_itens').insert(itemsToInsert);
+        if (itemsError) throw itemsError;
+
+        // 3. Gerar Movimentações de Estoque (SAIDA)
+        for (const item of itens) {
+            await this.createStockMovement({
+                company_id: venda.company_id,
+                produto_id: item.productId,
+                tipo: 'SAIDA',
+                quantidade: item.quantidade,
+                origem_id: item.origem_id, // Local de onde saiu o produto
+                user_id: venda.user_id,
+                user_name: venda.user_name || 'PDV',
+                observacoes: `Venda PDV #${sale.id.slice(0, 8)}`
+            });
+        }
+
+        return sale;
+    },
+    async deleteVenda(id: string): Promise<void> {
+        const { error } = await supabase.from('vendas').delete().eq('id', id);
+        if (error) throw error;
+    },
+
     // Chat
     async getMessages(companyId?: string): Promise<ChatMessage[]> {
-        if (companyId === 'trial-company') return [];
-        let query = supabase
-            .from('chat_messages')
-            .select('*');
-
+        let query = supabase.from('chat_messages').select('*');
         if (companyId) query = query.eq('company_id', companyId);
-
         const { data, error } = await query.order('timestamp', { ascending: true });
-
         if (error) return [];
-        return (data || []).map(raw => ({
-            id: raw.id,
-            companyId: raw.company_id,
-            senderId: raw.sender_id,
-            senderName: raw.sender_name,
-            receiverId: raw.receiver_id,
-            channelId: raw.channel_id,
-            text: raw.text,
-            timestamp: raw.timestamp
-        }));
+        return (data || []).map(raw => ({ id: raw.id, companyId: raw.company_id, senderId: raw.sender_id, senderName: raw.sender_name, receiverId: raw.receiver_id, channelId: raw.channel_id, text: raw.text, timestamp: raw.timestamp }));
     },
-
-    async sendMessage(message: Omit<ChatMessage, 'id' | 'timestamp'>) {
-        if (message.companyId === 'trial-company') return; // Ignore on trial mode
-        const { error } = await supabase.from('chat_messages').insert({
-            company_id: message.companyId,
-            sender_id: message.senderId,
-            sender_name: message.senderName,
-            receiver_id: message.receiverId,
-            channel_id: message.channelId,
-            text: message.text
-        });
+    async sendMessage(message: any): Promise<void> {
+        const { error } = await supabase.from('chat_messages').insert(message);
         if (error) throw error;
     },
 
-    // Pagamentos de Empresas
+    // Pagamentos
     async getCompanyPayments(companyId?: string): Promise<CompanyPayment[]> {
-        if (companyId === 'trial-company') return [];
-        let query = supabase
-            .from('company_payments')
-            .select('*');
-
+        let query = supabase.from('company_payments').select('*');
         if (companyId) query = query.eq('company_id', companyId);
-
         const { data, error } = await query.order('payment_date', { ascending: false });
-
         if (error) return [];
-        return (data || []).map(raw => ({
-            id: raw.id,
-            companyId: raw.company_id,
-            amount: raw.amount,
-            paymentDate: raw.payment_date,
-            planReference: raw.plan_reference,
-            expiresAtAfter: raw.expires_at_after
-        }));
+        return (data || []).map(raw => ({ id: raw.id, companyId: raw.company_id, amount: raw.amount, paymentDate: raw.payment_date, planReference: raw.plan_reference, expiresAtAfter: raw.expires_at_after }));
     },
-
-    async createCompanyPayment(payment: Omit<CompanyPayment, 'id'>) {
-        const { data, error } = await supabase.from('company_payments').insert({
-            company_id: payment.companyId,
-            amount: payment.amount,
-            payment_date: payment.paymentDate,
-            plan_reference: payment.planReference,
-            expires_at_after: payment.expiresAtAfter
-        }).select().single();
-
+    async createCompanyPayment(payment: any): Promise<CompanyPayment> {
+        const { data, error } = await supabase.from('company_payments').insert(payment).select().single();
         if (error) throw error;
-        return {
-            id: data.id,
-            companyId: data.company_id,
-            amount: data.amount,
-            paymentDate: data.payment_date,
-            planReference: data.plan_reference,
-            expiresAtAfter: data.expires_at_after
-        };
+        return { id: data.id, companyId: data.company_id, amount: data.amount, paymentDate: data.payment_date, planReference: data.plan_reference, expiresAtAfter: data.expires_at_after };
     },
-
-    async deleteCompanyPayment(id: string) {
+    async deleteCompanyPayment(id: string): Promise<void> {
         const { error } = await supabase.from('company_payments').delete().eq('id', id);
         if (error) throw error;
     },
-
-    async getAllPayments(): Promise<(CompanyPayment & { companyName: string })[]> {
-        const { data, error } = await supabase
-            .from('company_payments')
-            .select('*, companies(name)')
-            .order('payment_date', { ascending: false });
-
+    async getAllPayments(): Promise<any[]> {
+        const { data, error } = await supabase.from('company_payments').select('*, companies(name)').order('payment_date', { ascending: false });
         if (error) return [];
-        return (data || []).map(raw => ({
-            id: raw.id,
-            companyId: raw.company_id,
-            companyName: raw.companies?.name || 'Empresa Excluída',
-            amount: raw.amount,
-            paymentDate: raw.payment_date,
-            planReference: raw.plan_reference,
-            expiresAtAfter: raw.expires_at_after
-        }));
-    },
-
-    // Métodos de Restauração (Batch Upsert)
-    async upsertCompanies(companies: Company[]) {
-        const data = companies.map(c => ({
-            id: c.id,
-            name: c.name,
-            corporate_name: c.corporateName,
-            trade_name: c.tradeName,
-            document: c.document,
-            email: c.email,
-            phone: c.phone,
-            address: c.address,
-            city: c.city,
-            plan: c.plan,
-            monthly_fee: c.monthlyFee,
-            status: c.status,
-            created_at: c.createdAt,
-            expires_at: c.expiresAt,
-            settings: c.settings
-        }));
-        const { error } = await supabase.from('companies').upsert(data, { onConflict: 'id' });
-        if (error) throw error;
-    },
-
-    async upsertUsers(users: User[]) {
-        const data = users.map(u => ({
-            id: u.id,
-            company_id: u.companyId,
-            name: u.name,
-            email: u.email,
-            phone: u.phone,
-            role: u.role,
-            city: u.city,
-            is_blocked: u.isBlocked,
-            password: u.password
-        }));
-        const { error } = await supabase.from('users').upsert(data, { onConflict: 'id' });
-        if (error) throw error;
-    },
-
-    async upsertCustomers(customers: Customer[]) {
-        const data = customers.map(c => ({
-            id: c.id,
-            company_id: c.companyId,
-            name: c.name,
-            phone: c.phone,
-            city: c.city,
-            address: c.address,
-            number: c.number,
-            sector: c.sector,
-            notes: c.notes,
-            created_at: c.createdAt
-        }));
-        const { error } = await supabase.from('customers').upsert(data, { onConflict: 'id' });
-        if (error) throw error;
-    },
-
-    async upsertOrders(orders: ServiceOrder[]) {
-        const data = orders.map(o => ({
-            id: o.id,
-            company_id: o.companyId,
-            customer_id: o.customerId,
-            tech_id: o.techId,
-            type: o.type,
-            description: o.description,
-            status: o.status,
-            scheduled_date: o.scheduledDate,
-            created_at: o.createdAt,
-            finished_at: o.finishedAt,
-            cancellation_reason: o.cancellationReason,
-            daily_history: o.dailyHistory,
-            ai_report: o.aiReport,
-            posts: o.posts,
-            attachments: o.attachments
-        }));
-        const { error } = await supabase.from('service_orders').upsert(data, { onConflict: 'id' });
-        if (error) throw error;
-    },
-
-    async upsertMessages(messages: ChatMessage[]) {
-        const data = messages.map(m => ({
-            id: m.id,
-            company_id: m.companyId,
-            sender_id: m.senderId,
-            sender_name: m.senderName,
-            receiver_id: m.receiverId,
-            channel_id: m.channelId,
-            text: m.text,
-            timestamp: m.timestamp
-        }));
-        const { error } = await supabase.from('chat_messages').upsert(data, { onConflict: 'id' });
-        if (error) throw error;
-    },
-
-    async upsertPayments(payments: CompanyPayment[]) {
-        const data = payments.map(p => ({
-            id: p.id,
-            company_id: p.companyId,
-            amount: p.amount,
-            payment_date: p.paymentDate,
-            plan_reference: p.planReference,
-            expires_at_after: p.expiresAtAfter
-        }));
-        const { error } = await supabase.from('company_payments').upsert(data, { onConflict: 'id' });
-        if (error) throw error;
+        return (data || []).map(raw => ({ ...raw, companyName: raw.companies?.name || 'Excluída' }));
     },
 
     // Notificações
     async getNotifications(companyId: string): Promise<AppNotification[]> {
-        if (companyId === 'trial-company') return [];
-        const { data, error } = await supabase
-            .from('notifications')
-            .select('*')
-            .eq('company_id', companyId)
-            .order('created_at', { ascending: false })
-            .limit(20);
-
+        const { data, error } = await supabase.from('notifications').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(20);
         if (error) return [];
-        return (data || []).map(raw => ({
-            id: raw.id,
-            companyId: raw.company_id,
-            type: raw.type as NotificationType,
-            title: raw.title,
-            content: raw.content,
-            link: raw.link,
-            isRead: raw.is_read,
-            createdAt: raw.created_at
-        }));
+        return (data || []).map(raw => ({ id: raw.id, companyId: raw.company_id, type: raw.type as NotificationType, title: raw.title, content: raw.content, link: raw.link, isRead: raw.is_read, createdAt: raw.created_at }));
     },
-
-    async createNotification(notification: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>) {
-        const { error } = await supabase.from('notifications').insert({
-            company_id: notification.companyId,
-            type: notification.type,
-            title: notification.title,
-            content: notification.content,
-            link: notification.link
-        });
+    async createNotification(notification: any): Promise<void> {
+        const { error } = await supabase.from('notifications').insert(notification);
         if (error) throw error;
     },
-
-    async markNotificationAsRead(id: string) {
+    async markNotificationAsRead(id: string): Promise<void> {
         const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
         if (error) throw error;
     },
 
-    // Inteligência Artificial
+    // Outros
     async generateAIReport(orderId: string, description: string, history: string): Promise<string> {
-        if (orderId.startsWith('trial-')) {
-            // Mock de inteligência artificial para o trial
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            return `## Relatório Técnico Preliminar (Modo Demonstração)
-
-**Situação Encontrada:**
-O cliente relatou o seguinte problema: *${description}*
-
-**Ações Técnicas Realizadas:**
-De acordo com o acompanhamento: *${history}*
-
-**Conclusão:**
-Este é um relatório gerado localmente pelo ambiente de testes (Demonstração). Em produção, este texto seria preenchido pela Inteligência Artificial configurada na plataforma (Google Gemini) com base no Diário de Bordo Técnico.`;
-        }
-
-        const { data, error } = await supabase.functions.invoke('generate-report', {
-            body: { description, history }
-        });
-
-        if (error) {
-            console.error("Erro na Function generate-report", error);
-            throw new Error('Falha ao gerar relatório com Inteligência Artificial.');
-        }
-
-        return data.text || 'Erro de formatação do relatório gerado.';
-    },
-
-    // Canais de Suporte (Direct Developer <=> Admin)
-    async getSupportMessages(companyId: string): Promise<ChatMessage[]> {
-        if (companyId === 'trial-company') return [];
-        const { data, error } = await supabase
-            .from('chat_messages')
-            .select('*')
-            .eq('channel_id', `support_${companyId}`)
-            .order('timestamp', { ascending: true });
-
-        if (error) return [];
-        return (data || []).map(raw => ({
-            id: raw.id,
-            companyId: raw.company_id,
-            senderId: raw.sender_id,
-            senderName: raw.sender_name,
-            receiverId: raw.receiver_id,
-            channelId: raw.channel_id,
-            text: raw.text,
-            timestamp: raw.timestamp
-        }));
-    },
-
-    async getAllSupportChannels(): Promise<{ companyId: string, companyName: string, lastMessage: string, timestamp: string }[]> {
-        // 1. Busca todas as empresas ativas
-        const { data: companies, error: compError } = await supabase
-            .from('companies')
-            .select('id, name, trade_name')
-            .eq('status', 'ACTIVE')
-            .order('trade_name', { ascending: true });
-
-        if (compError) return [];
-
-        // 2. Busca as últimas mensagens de suporte
-        const { data: messages, error: msgError } = await supabase
-            .from('chat_messages')
-            .select('company_id, text, timestamp')
-            .filter('channel_id', 'ilike', 'support_%')
-            .order('timestamp', { ascending: false });
-
-        if (msgError) return (companies || []).map(c => ({
-            companyId: c.id,
-            companyName: c.trade_name || c.name,
-            lastMessage: '',
-            timestamp: ''
-        }));
-
-        // 3. Mapeia as mensagens para as empresas
-        const latestMsgs: Record<string, { text: string, timestamp: string }> = {};
-        messages?.forEach(msg => {
-            if (!latestMsgs[msg.company_id]) {
-                latestMsgs[msg.company_id] = { text: msg.text, timestamp: msg.timestamp };
-            }
-        });
-
-        // 4. Retorna a lista completa prioritizando quem tem mensagem recente
-        return (companies || []).map(c => ({
-            companyId: c.id,
-            companyName: c.trade_name || c.name,
-            lastMessage: latestMsgs[c.id]?.text || 'Sem mensagens anteriores',
-            timestamp: latestMsgs[c.id]?.timestamp || ''
-        })).sort((a, b) => {
-            if (a.timestamp && b.timestamp) return b.timestamp.localeCompare(a.timestamp);
-            if (a.timestamp) return -1;
-            if (b.timestamp) return 1;
-            return a.companyName.localeCompare(b.companyName);
-        });
-    },
-    // Exportando o cliente para uso em listeners realtime
-    supabase,
-
-    // === Precificação dos Planos ===
-    async getPlanPricing(): Promise<PlanPricing[]> {
-        const { data, error } = await supabase
-            .from('plan_pricing')
-            .select('*')
-            .order('plan_type')
-            .order('period');
-        if (error) return [];
-        return (data || []).map(raw => ({
-            id: raw.id,
-            planType: raw.plan_type,
-            period: raw.period as CompanyPeriod,
-            basePrice: Number(raw.base_price),
-            discountPct: Number(raw.discount_pct),
-            updatedAt: raw.updated_at
-        }));
-    },
-
-    async setPlanPricing(planType: string, period: string, basePrice: number, discountPct: number): Promise<void> {
-        const { error } = await supabase
-            .from('plan_pricing')
-            .upsert(
-                { plan_type: planType, period, base_price: basePrice, discount_pct: discountPct, updated_at: new Date().toISOString() },
-                { onConflict: 'plan_type,period' }
-            );
+        const { data, error } = await supabase.functions.invoke('generate-report', { body: { description, history } });
         if (error) throw error;
+        return data.text || '';
     },
-
-    // === Contagem de Admins ===
+    async getSupportMessages(companyId: string): Promise<ChatMessage[]> {
+        const { data, error } = await supabase.from('chat_messages').select('*').eq('channel_id', `support_${companyId}`).order('timestamp', { ascending: true });
+        if (error) return [];
+        return (data || []).map(raw => ({ id: raw.id, companyId: raw.company_id, senderId: raw.sender_id, senderName: raw.sender_name, receiverId: raw.receiver_id, channelId: raw.channel_id, text: raw.text, timestamp: raw.timestamp }));
+    },
+    async getAllSupportChannels(): Promise<any[]> {
+        const { data: companies } = await supabase.from('companies').select('id, name, trade_name').eq('status', 'ACTIVE');
+        return (companies || []).map(c => ({ companyId: c.id, companyName: c.trade_name || c.name, lastMessage: '', timestamp: '' }));
+    },
+    async getPlanPricing(): Promise<any[]> {
+        const { data, error } = await supabase.from('plan_pricing').select('*');
+        if (error) return [];
+        return data;
+    },
+    async setPlanPricing(planType: string, period: string, basePrice: number, discountPct: number): Promise<void> {
+        await supabase.from('plan_pricing').upsert({ plan_type: planType, period, base_price: basePrice, discount_pct: discountPct }, { onConflict: 'plan_type,period' });
+    },
     async getAdminCount(companyId: string): Promise<number> {
-        if (companyId === 'trial-company') return 1;
-        const { count, error } = await supabase
-            .from('users')
-            .select('*', { count: 'exact', head: true })
-            .eq('company_id', companyId)
-            .eq('role', 'Administrador')
-            .eq('is_blocked', false);
-        if (error) return 0;
+        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('role', 'Administrador');
         return count || 0;
     },
-
-    // === Sessões Ativas (Removido por incompatibilidade de schema) ===
-    async forceLogoutUser(_userId: string): Promise<void> {
-        return Promise.resolve();
+    async forceLogoutUser(_userId: string): Promise<void> { return Promise.resolve(); },
+    async getActiveSessionUsers(_companyId?: string): Promise<User[]> { return Promise.resolve([]); },
+    async globalSearch(companyId: string, query: string, _userRole: string): Promise<any> {
+        const { data: customers } = await supabase.from('customers').select('*').eq('company_id', companyId).ilike('name', `%${query}%`).limit(5);
+        return { customers: (customers || []).map(mapCustomer), orders: [], users: [] };
     },
-
-    async getActiveSessionUsers(_companyId?: string): Promise<User[]> {
-        return Promise.resolve([]);
-    },
-
-    // === Pesquisa Global ===
-    async globalSearch(companyId: string, query: string, userRole: string): Promise<{ customers: Customer[], orders: ServiceOrder[], users: User[] }> {
-        if (!query || query.trim().length === 0) {
-            return { customers: [], orders: [], users: [] };
-        }
-
-        const safeQuery = `%${query.trim()}%`;
-        const isAdminOrDev = ['Administrador', 'Desenvolvedor'].includes(userRole);
-        const isTech = userRole === 'Técnico' || userRole === 'Tecnico';
-
-        // Arrays de queries independentes baseados em regras
-        const fetchCustomers = supabase
-            .from('customers')
-            .select('*')
-            .eq('company_id', companyId)
-            .eq('ativo', true)
-            // No PostgREST .or() recebe uma string no formato "coluna.op.valor,coluna2.op.valor"
-            // Sem as aspas duplas adicionais dentro do valor, apenas a url encoding
-            .or(`name.ilike.%${query.trim()}%,phone.ilike.%${query.trim()}%,city.ilike.%${query.trim()}%`)
-            .limit(5);
-
-        // Ordens: Se admin vê todas da empresa, se técnico vê apenas as atribuídas a ele
-        const fetchOrders = supabase
-            .from('service_orders')
-            .select(`
-                *,
-                tech:users!tech_id(name),
-                customer:customers!inner(id, name, city)
-            `)
-            .eq('company_id', companyId)
-            .eq('ativo', true)
-            // Filtros de or: busca direto na ordem. Não usaremos id.ilike pois se for UUID o PostgREST retorna 400.
-            .or(`type.ilike.%${query.trim()}%,description.ilike.%${query.trim()}%`)
-            .order('created_at', { ascending: false })
-            .limit(5);
-
-        let fetchUsers: any = Promise.resolve<{ data: any[], error: any }>({ data: [], error: null });
-        if (isAdminOrDev) {
-            fetchUsers = supabase
-                .from('users')
-                .select('*')
-                .eq('company_id', companyId)
-                .eq('ativo', true)
-                .or(`name.ilike.%${query.trim()}%,email.ilike.%${query.trim()}%`)
-                .limit(5);
-        }
-
-        const [custRes, ordRes, usrRes] = await Promise.all([fetchCustomers, fetchOrders, fetchUsers]);
-
-        if (custRes.error) console.error("Error fetching customers for global search:", custRes.error);
-        if (ordRes.error) console.error("Error fetching orders for global search:", ordRes.error);
-        if (usrRes.error) console.error("Error fetching users for global search:", usrRes.error);
-
-        return {
-            customers: (custRes.data || []).map(mapCustomer),
-            orders: (ordRes.data || []).map(mapOrder),
-            users: (usrRes.data || []).map(mapUser)
-        };
-    },
+    async upsertCompanies(items: Company[]) { await supabase.from('companies').upsert(items.map(i => ({ ...i, settings: JSON.stringify(i.settings) }))); },
+    async upsertUsers(items: User[]) { await supabase.from('users').upsert(items.map(i => ({ ...i, company_id: i.companyId }))); },
+    async upsertCustomers(items: Customer[]) { await supabase.from('customers').upsert(items.map(i => ({ ...i, company_id: i.companyId }))); },
+    async upsertOrders(items: ServiceOrder[]) { await supabase.from('service_orders').upsert(items.map(i => ({ ...i, company_id: i.companyId, customer_id: i.customerId, tech_id: i.techId }))); },
+    async upsertMessages(items: ChatMessage[]) { await supabase.from('chat_messages').upsert(items.map(i => ({ ...i, company_id: i.companyId, sender_id: i.senderId }))); },
+    async upsertPayments(items: CompanyPayment[]) { await supabase.from('company_payments').upsert(items.map(i => ({ ...i, company_id: i.companyId }))); },
+    supabase
 };

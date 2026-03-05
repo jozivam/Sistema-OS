@@ -1,17 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Edit, Trash2, Camera, Package, Truck, BarChart3, Tag, Image as ImageIcon, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Search, Filter, Edit, Trash2, Camera, Package, Truck, BarChart3, Tag, Image as ImageIcon, CheckCircle2, AlertCircle, Warehouse, Box, Scale, DollarSign, Globe, Ruler, AlertTriangle, Info } from 'lucide-react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
-import { Product, Supplier } from '../types';
+import { Product, Supplier, StorageLocation } from '../types';
+import { SearchableSelect } from '../components/SearchableSelect';
+import { supabase } from '../services/supabaseClient';
 
 export default function EstoqueProdutos() {
     const [products, setProducts] = useState<Product[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [companyId, setCompanyId] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isEditing, setIsEditing] = useState<string | null>(null);
+    const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
+
+    const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
+
+    const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'error') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
+
+    // Upload e Refs
+    const [uploading, setUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Listas para Autocomplete
+    const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+    const [availableBrands, setAvailableBrands] = useState<string[]>([]);
 
     const initialForm = {
         nome: '',
@@ -21,6 +40,7 @@ export default function EstoqueProdutos() {
         valorCompra: 0,
         margemLucro: 0,
         quantidadeEstoque: 0,
+        unidadeMedida: 'UN' as const,
         ean: '',
         ncm: '',
         peso: 0,
@@ -29,13 +49,25 @@ export default function EstoqueProdutos() {
         comprimento: 0,
         categoria: 'Equipamentos',
         marca: '',
-        fornecedorId: '',
         seoTitle: '',
         seoDescription: '',
-        status: 'ACTIVE' as const
+        status: 'ACTIVE' as const,
+        imagens: [] as string[]
     };
 
     const [formData, setFormData] = useState(initialForm);
+
+    // Modal de Entrada (Pós-Cadastro)
+    const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
+    const [createdProduct, setCreatedProduct] = useState<Product | null>(null);
+    const [entryForm, setEntryForm] = useState({
+        fornecedorId: '',
+        documentRef: '',
+        destinoId: '',
+        quantidade: 1,
+        barcodes: [] as string[]
+    });
+    const [isSubmittingEntry, setIsSubmittingEntry] = useState(false);
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -56,52 +88,144 @@ export default function EstoqueProdutos() {
     const loadData = async () => {
         try {
             setIsLoading(true);
-            const [pData, sData] = await Promise.all([
+            const [pData, sData, locData] = await Promise.all([
                 dbService.getProducts(companyId!),
-                dbService.getSuppliers(companyId!)
+                dbService.getSuppliers(companyId!),
+                dbService.getStorageLocations(companyId!)
             ]);
             setProducts(pData);
             setSuppliers(sData);
+            setStorageLocations(locData);
+
+            if (locData.length > 0 && !entryForm.destinoId) {
+                setEntryForm(prev => ({ ...prev, destinoId: locData[0].id }));
+            }
+
+            const cats = Array.from(new Set(pData.map(p => p.categoria).filter(Boolean)));
+            const brands = Array.from(new Set(pData.map(p => p.marca).filter(Boolean)));
+            setAvailableCategories(cats as string[]);
+            setAvailableBrands(brands as string[]);
         } catch (error) {
-            console.error("Erro ao carregar dados:", error);
+            console.error("Erro no loadData:", error);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const calculateSellingPrice = (buy: number, margin: number) => {
-        if (!buy) return 0;
-        return buy * (1 + margin / 100);
-    };
-
+    // Lógica Financeira
+    const calculateSellingPrice = (buy: number, margin: number) => buy * (1 + margin / 100);
     const handleBuyPriceChange = (value: number) => {
         const newPrice = calculateSellingPrice(value, formData.margemLucro);
         setFormData({ ...formData, valorCompra: value, precoVenda: Number(newPrice.toFixed(2)) });
     };
-
     const handleMarginChange = (value: number) => {
         const newPrice = calculateSellingPrice(formData.valorCompra, value);
         setFormData({ ...formData, margemLucro: value, precoVenda: Number(newPrice.toFixed(2)) });
     };
 
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+        try {
+            setUploading(true);
+            const file = e.target.files[0];
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Math.random()}.${fileExt}`;
+            const filePath = `${companyId}/${fileName}`;
+            const { error: uploadError } = await supabase.storage.from('product-images').upload(filePath, file);
+            if (uploadError) throw uploadError;
+            const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(filePath);
+            setFormData(p => ({ ...p, imagens: [...p.imagens, publicUrl] }));
+        } catch (error) {
+            showToast('Falha ao enviar imagem.', 'error');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const isDuplicateName = products.some(p => p.id !== isEditing && p.nome.toLowerCase() === formData.nome.toLowerCase());
+    const isBrandRequired = isDuplicateName;
+    const isFullDuplicate = products.some(p => p.id !== isEditing && p.nome.toLowerCase() === formData.nome.toLowerCase() && (p.marca || '').toLowerCase() === (formData.marca || '').toLowerCase());
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (isBrandRequired && !formData.marca) {
+            showToast("Como já existe um produto com este nome, a Marca é obrigatória para diferenciar.", "warning");
+            return;
+        }
+
+        if (isFullDuplicate) {
+            showToast("Já existe um produto cadastrado com exatamente este Nome e Marca. Por favor, altere para diferenciar.", "error");
+            return;
+        }
         try {
             if (isEditing) {
                 await dbService.updateProduct(isEditing, formData);
+                setIsModalOpen(false);
+                setFormData(initialForm);
+                setIsEditing(null);
+                loadData();
             } else {
-                await dbService.createProduct({
-                    ...formData,
-                    companyId: companyId!
-                });
+                const newProd = await dbService.createProduct({ ...formData, companyId: companyId! });
+                setCreatedProduct(newProd);
+                setIsModalOpen(false);
+                setFormData(initialForm);
+                setEntryForm(prev => ({ ...prev, quantidade: 1, barcodes: [''] }));
+                setIsEntryModalOpen(true);
             }
-            setIsModalOpen(false);
-            setFormData(initialForm);
-            setIsEditing(null);
-            loadData();
         } catch (error) {
-            console.error("Erro ao salvar produto:", error);
-            alert("Erro ao salvar produto. Verifique se as tabelas foram criadas no Supabase.");
+            showToast("Erro ao salvar produto.", "error");
+        }
+    };
+
+    const handleEntrySubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!createdProduct || !companyId) return;
+        if (!entryForm.destinoId) {
+            showToast("Selecione um depósito de destino.", "error");
+            return;
+        }
+        try {
+            setIsSubmittingEntry(true);
+            const user = await authService.getCurrentUser();
+
+            // Registra a entrada
+            const notasBarcodes = entryForm.barcodes.filter(b => b.trim() !== '').join(', ');
+            const observacoes = `Carga Inicial.${entryForm.documentRef ? ` NF: ${entryForm.documentRef}.` : ''}${notasBarcodes ? ` Códigos: ${notasBarcodes}` : ''}`;
+
+            await dbService.createStockMovement({
+                companyId,
+                produtoId: createdProduct.id,
+                tipo: 'ENTRADA',
+                quantidade: entryForm.quantidade,
+                destinoId: entryForm.destinoId,
+                fornecedorId: entryForm.fornecedorId || null,
+                documentRef: entryForm.documentRef || '',
+                userId: user?.id,
+                userName: user?.name || 'Sistema',
+                observacoes
+            });
+
+            // Atualiza os seriais no produto (Módulo de Catálogo)
+            if (notasBarcodes) {
+                const prod = await dbService.getProduct(createdProduct.id);
+                if (prod) {
+                    const currentVars = prod.variacoes || {};
+                    const newSeriais = [...(currentVars.seriais || []), ...entryForm.barcodes.filter(b => b.trim() !== '')];
+                    await dbService.updateProduct(prod.id, { variacoes: { ...currentVars, seriais: newSeriais } });
+                }
+            }
+
+            setIsEntryModalOpen(false);
+            setCreatedProduct(null);
+            setEntryForm({ fornecedorId: '', documentRef: '', destinoId: storageLocations[0]?.id || '', quantidade: 1, barcodes: [] });
+            loadData();
+            showToast("Produto e Estoque inicial registrados com sucesso!", "success");
+        } catch (error) {
+            console.error("Erro ao registrar entrada:", error);
+            showToast("Erro ao registrar entrada.", "error");
+        } finally {
+            setIsSubmittingEntry(false);
         }
     };
 
@@ -109,11 +233,12 @@ export default function EstoqueProdutos() {
         setFormData({
             nome: p.nome,
             descricao: p.descricao || '',
-            sku: p.sku,
+            sku: p.sku || '',
             precoVenda: p.precoVenda,
             valorCompra: p.valorCompra || 0,
             margemLucro: p.margemLucro || 0,
             quantidadeEstoque: p.quantidadeEstoque,
+            unidadeMedida: (p.unidadeMedida as any) || 'UN',
             ean: p.ean || '',
             ncm: p.ncm || '',
             peso: p.peso || 0,
@@ -122,25 +247,18 @@ export default function EstoqueProdutos() {
             comprimento: p.comprimento || 0,
             categoria: p.categoria || 'Equipamentos',
             marca: p.marca || '',
-            fornecedorId: p.fornecedorId || '',
             seoTitle: p.seoTitle || '',
             seoDescription: p.seoDescription || '',
-            status: p.status
+            status: p.status,
+            imagens: p.imagens || []
         });
         setIsEditing(p.id);
         setIsModalOpen(true);
     };
 
-    const handleDelete = async (id: string) => {
-        if (confirm("Deseja realmente excluir este produto?")) {
-            await dbService.deleteProduct(id);
-            loadData();
-        }
-    };
-
     const filteredProducts = products.filter(p =>
         p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+        (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     return (
@@ -156,29 +274,21 @@ export default function EstoqueProdutos() {
                         Gestão Completa de Itens, Preços e Logística
                     </p>
                 </div>
-
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => {
-                            setFormData(initialForm);
-                            setIsEditing(null);
-                            setIsModalOpen(true);
-                        }}
-                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-black text-sm shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-95"
-                    >
-                        <Plus size={20} />
-                        NOVO PRODUTO
-                    </button>
-                </div>
+                <button
+                    onClick={() => { setFormData(initialForm); setIsEditing(null); setIsModalOpen(true); }}
+                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-black text-sm shadow-lg shadow-blue-200"
+                >
+                    <Plus size={20} /> NOVO PRODUTO
+                </button>
             </div>
 
             {/* Stats Bar */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {[
                     { label: 'Total Itens', value: products.length, icon: Package, color: 'blue' },
-                    { label: 'Em Estoque', value: products.reduce((acc, p) => acc + p.quantidadeEstoque, 0), icon: BarChart3, color: 'emerald' },
+                    { label: 'Em Estoque', value: products.reduce((acc, p) => acc + (p.quantidadeEstoque || 0), 0), icon: BarChart3, color: 'emerald' },
                     { label: 'Categorias', value: new Set(products.map(p => p.categoria)).size, icon: Tag, color: 'amber' },
-                    { label: 'Valor em Estoque', value: `R$ ${products.reduce((acc, p) => acc + (p.quantidadeEstoque * (p.valorCompra || 0)), 0).toLocaleString()}`, icon: Truck, color: 'indigo' }
+                    { label: 'Valor Total', value: `R$ ${products.reduce((acc, p) => acc + ((p.quantidadeEstoque || 0) * (p.valorCompra || 0)), 0).toLocaleString()}`, icon: DollarSign, color: 'indigo' }
                 ].map((stat, i) => (
                     <div key={i} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-2xl bg-${stat.color}-50 text-${stat.color}-600 flex items-center justify-center`}>
@@ -193,8 +303,8 @@ export default function EstoqueProdutos() {
             </div>
 
             {/* List Section */}
-            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
-                <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
+                <div className="p-8 border-b flex items-center justify-between bg-slate-50/50">
                     <div className="relative max-w-md w-full">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                         <input
@@ -202,57 +312,53 @@ export default function EstoqueProdutos() {
                             placeholder="Buscar por nome ou SKU..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-12 pr-6 py-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-bold text-slate-700"
+                            className="w-full pl-12 pr-6 py-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all"
                         />
                     </div>
-                    <button className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all font-bold text-sm">
-                        <Filter size={18} />
-                        Filtros Avançados
-                    </button>
                 </div>
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-slate-50 text-slate-400">
-                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest">Produto / SKU</th>
-                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest">Categoria</th>
-                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest">Financeiro</th>
-                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest">Estoque</th>
-                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest">Status</th>
-                                <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-right">Ações</th>
+                        <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                            <tr>
+                                <th className="px-8 py-5">Produto / SKU</th>
+                                <th className="px-8 py-5">Categoria</th>
+                                <th className="px-8 py-5">Financeiro</th>
+                                <th className="px-8 py-5 text-center">Estoque</th>
+                                <th className="px-8 py-5">Status</th>
+                                <th className="px-8 py-5 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {isLoading ? (
-                                <tr><td colSpan={6} className="p-20 text-center font-bold text-slate-400">Carregando catálogo...</td></tr>
+                                <tr><td colSpan={6} className="p-20 text-center font-bold text-slate-400 uppercase tracking-widest">Sincronizando Catálogo...</td></tr>
                             ) : filteredProducts.map(p => (
-                                <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                                <tr key={p.id} className="hover:bg-slate-50 transition-colors group italic-hover">
                                     <td className="px-8 py-6">
                                         <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                                                <ImageIcon size={24} />
+                                            <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-all border border-slate-200">
+                                                {p.imagens && p.imagens[0] ? <img src={p.imagens[0]} alt="" className="w-full h-full object-cover" /> : <ImageIcon size={24} />}
                                             </div>
                                             <div>
-                                                <div className="font-black text-slate-900 group-hover:text-blue-600 transition-colors">{p.nome}</div>
-                                                <div className="text-[11px] font-black text-slate-400 uppercase tracking-wider">{p.sku}</div>
+                                                <div className="font-black text-slate-900 group-hover:text-blue-600 transition-colors uppercase tracking-tight">{p.nome}</div>
+                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{p.sku || 'N/A'}</div>
                                             </div>
                                         </div>
                                     </td>
                                     <td className="px-8 py-6">
-                                        <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                            {p.categoria}
-                                        </span>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-lg text-[9px] font-black uppercase w-fit">{p.categoria}</span>
+                                            <span className="text-[10px] font-bold text-blue-500 uppercase">{p.marca || '---'}</span>
+                                        </div>
                                     </td>
                                     <td className="px-8 py-6">
                                         <div className="text-sm font-black text-slate-900">R$ {p.precoVenda.toFixed(2)}</div>
-                                        <div className="text-[10px] font-bold text-slate-400">Margem: {p.margemLucro}%</div>
+                                        <div className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">Custo: R$ {p.valorCompra?.toFixed(2)}</div>
                                     </td>
-                                    <td className="px-8 py-6">
+                                    <td className="px-8 py-6 text-center">
                                         <div className={`text-lg font-black ${p.quantidadeEstoque < 5 ? 'text-rose-600' : 'text-slate-900'}`}>
-                                            {p.quantidadeEstoque}
+                                            {p.quantidadeEstoque} <span className="text-[9px] text-slate-400 uppercase">{p.unidadeMedida || 'UN'}</span>
                                         </div>
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Unidades</div>
                                     </td>
                                     <td className="px-8 py-6">
                                         <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${p.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -260,14 +366,10 @@ export default function EstoqueProdutos() {
                                             {p.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
                                         </span>
                                     </td>
-                                    <td className="px-8 py-6">
+                                    <td className="px-8 py-6 text-right">
                                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => handleEdit(p)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 rounded-2xl transition-all shadow-sm">
-                                                <Edit size={18} />
-                                            </button>
-                                            <button onClick={() => handleDelete(p.id)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 rounded-2xl transition-all shadow-sm">
-                                                <Trash2 size={18} />
-                                            </button>
+                                            <button onClick={() => handleEdit(p)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 rounded-2xl transition-all shadow-sm"><Edit size={18} /></button>
+                                            <button onClick={async () => { if (confirm("Excluir produto?")) { await dbService.deleteProduct(p.id); loadData(); } }} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 rounded-2xl transition-all shadow-sm"><Trash2 size={18} /></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -277,167 +379,347 @@ export default function EstoqueProdutos() {
                 </div>
             </div>
 
-            {/* Modal de Cadastro/Edição */}
+            {/* Modal de Cadastro/Edição PROFISSIONAL */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-                    <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setIsModalOpen(false)} />
-                    <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
-                        <div className="p-8 border-b flex justify-between items-center bg-slate-50/50">
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-                                    {isEditing ? 'Editar Produto' : 'Novo Produto'}
-                                </h3>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">
-                                    Configure todos os detalhes técnicos e comerciais
-                                </p>
+                    <div className="fixed inset-0 bg-slate-500/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setIsModalOpen(false)} />
+                    <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-5xl overflow-hidden animate-in zoom-in duration-300 max-h-[95vh] flex flex-col border border-slate-200">
+
+                        {/* Modal Header */}
+                        <div className="p-8 border-b-2 border-slate-50 flex justify-between items-center bg-slate-50/50">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                                    <Package size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
+                                        {isEditing ? 'Editar Produto' : 'Novo Produto'}
+                                    </h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1 italic">Inteligência de Estoque & Catálogo</p>
+                                </div>
                             </div>
-                            <button onClick={() => setIsModalOpen(false)} className="w-12 h-12 bg-white border border-slate-200 text-slate-400 hover:text-slate-900 rounded-2xl transition-all flex items-center justify-center">
-                                <Plus size={24} className="rotate-45" />
+                            <button onClick={() => setIsModalOpen(false)} className="w-12 h-12 bg-white border border-slate-200 text-slate-400 hover:text-slate-900 rounded-2xl transition-all flex items-center justify-center shadow-sm">
+                                <Plus size={28} className="rotate-45" />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-8 space-y-8 overflow-y-auto custom-scrollbar flex-1">
-                            {/* Sessão 1: Identificação e Fotos */}
+                        <form onSubmit={handleSubmit} className="p-8 space-y-10 overflow-y-auto custom-scrollbar flex-1 bg-white">
+
+                            {/* SEÇÃO 1: IDENTIFICAÇÃO E FOTOS */}
                             <div className="space-y-6">
-                                <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-[0.2em] border-l-4 border-blue-500 pl-4">Identificação e Apresentação</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="md:col-span-2 space-y-4">
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Nome do Produto *</label>
-                                            <input required type="text" value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-sm" placeholder="Ex: Roteador Wireless Gigabit AC1200" />
+                                <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-[0.2em] border-l-4 border-blue-600 pl-4">I. Identificação Técnica</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+                                    <div className="md:col-span-8 space-y-6">
+                                        <div className="relative">
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Nome Comercial do Produto *</label>
+                                            <input
+                                                required type="text" list="products-suggestions"
+                                                value={formData.nome}
+                                                onChange={e => setFormData({ ...formData, nome: e.target.value })}
+                                                className={`w-full px-6 py-4 bg-slate-50 border-2 rounded-2xl outline-none focus:ring-4 transition-all font-bold text-lg ${isDuplicateName ? 'border-amber-400 bg-amber-50 focus:ring-amber-500/10' : 'border-slate-100 focus:border-blue-500 focus:ring-blue-500/10'}`}
+                                                placeholder="Busque ou digite o nome..."
+                                            />
+                                            <datalist id="products-suggestions">
+                                                {products.map(p => <option key={p.id} value={p.nome} />)}
+                                            </datalist>
+                                            {isDuplicateName && (
+                                                <div className="flex items-center gap-2 mt-2 text-amber-600 font-bold text-[9px] uppercase ml-1 animate-pulse">
+                                                    <AlertCircle size={14} /> Sugestão: Nome já em uso. Diferencie pela Marca abaixo.
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Descrição Técnica / Benefícios</label>
-                                            <textarea rows={3} value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-sm" placeholder="Especificações técnicas, o que acompanha, garantia..." />
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Descrição Técnica / O que acompanha</label>
+                                            <textarea rows={3} value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-sm" placeholder="Especificações detalhadas do item..." />
                                         </div>
                                     </div>
-                                    <div className="space-y-4">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Imagens (4-6 sugestão)</label>
-                                        <div className="aspect-square bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-300 transition-all cursor-pointer group">
-                                            <Camera size={32} className="mb-2 group-hover:scale-110 transition-transform" />
-                                            <span className="text-[10px] font-black uppercase tracking-wider">Upload de Fotos</span>
-                                            <span className="text-[9px] font-bold mt-1 text-slate-400">Max 10MB por arquivo</span>
+                                    <div className="md:col-span-4 space-y-4">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1 text-center">Galeira de Fotos</label>
+                                        <div
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="aspect-square bg-slate-50 border-4 border-dashed border-slate-100 rounded-[2.5rem] flex flex-col items-center justify-center text-slate-300 hover:text-blue-500 hover:border-blue-500/20 hover:bg-blue-50 transition-all cursor-pointer group relative overflow-hidden"
+                                        >
+                                            {formData.imagens[0] ? (
+                                                <img src={formData.imagens[0]} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                            ) : (
+                                                <>
+                                                    <Camera size={42} className="mb-3" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest">{uploading ? 'Enviando...' : 'Adicionar Foto'}</span>
+                                                </>
+                                            )}
+                                            <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {formData.imagens.slice(1, 5).map((img, i) => (
+                                                <div key={i} className="aspect-square rounded-xl bg-slate-100 overflow-hidden border-2 border-white shadow-sm">
+                                                    <img src={img} className="w-full h-full object-cover" alt="" />
+                                                </div>
+                                            ))}
+                                            {formData.imagens.length < 5 && <div onClick={() => fileInputRef.current?.click()} className="aspect-square rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:text-blue-500 cursor-pointer"><Plus size={16} /></div>}
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Sessão 2: Financeiro */}
-                            <div className="space-y-6 pt-6 border-t border-slate-100">
-                                <h4 className="text-[11px] font-black text-emerald-600 uppercase tracking-[0.2em] border-l-4 border-emerald-500 pl-4">Comercial e Financeiro</h4>
+                            {/* SEÇÃO 2: FINANCEIRO */}
+                            <div className="space-y-6 pt-6 border-t-2 border-slate-50">
+                                <h4 className="text-[11px] font-black text-emerald-500 uppercase tracking-[0.2em] border-l-4 border-emerald-500 pl-4">II. Comercial e Lucratividade</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Custo de Compra (R$)</label>
-                                        <input type="number" step="0.01" value={formData.valorCompra} onChange={e => handleBuyPriceChange(Number(e.target.value))} className="w-full px-5 py-3.5 bg-emerald-50/30 border-2 border-emerald-100/50 rounded-2xl outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 font-black text-sm" />
+                                    <div className="group">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Custo Unitário (R$)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500 font-black text-xs">$</span>
+                                            <input type="number" step="0.01" value={formData.valorCompra} onChange={e => handleBuyPriceChange(Number(e.target.value))} className="w-full pl-8 pr-5 py-4 bg-emerald-50/20 border-2 border-emerald-100/30 rounded-2xl outline-none focus:border-emerald-500 font-black text-sm transition-all" />
+                                        </div>
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Margem de Lucro (%)</label>
-                                        <input type="number" step="0.1" value={formData.margemLucro} onChange={e => handleMarginChange(Number(e.target.value))} className="w-full px-5 py-3.5 bg-amber-50/30 border-2 border-amber-100/50 rounded-2xl outline-none focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 font-black text-sm" />
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Margem de Lucro (%)</label>
+                                        <div className="relative">
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-500 font-black text-xs">%</span>
+                                            <input type="number" step="0.1" value={formData.margemLucro} onChange={e => handleMarginChange(Number(e.target.value))} className="w-full px-5 py-4 bg-orange-50/20 border-2 border-orange-100/30 rounded-2xl outline-none focus:border-orange-500 font-black text-sm transition-all" />
+                                        </div>
                                     </div>
                                     <div className="md:col-span-2">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Preço Sugerido para Venda (R$)</label>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Preço Final de Venda (R$)</label>
                                         <div className="relative">
-                                            <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-emerald-600">R$</span>
-                                            <input type="number" step="0.01" value={formData.precoVenda} onChange={e => setFormData({ ...formData, precoVenda: Number(e.target.value) })} className="w-full pl-12 pr-5 py-3.5 bg-blue-600 text-white border-none rounded-2xl outline-none shadow-lg shadow-blue-200 font-black text-lg" />
+                                            <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+                                            <input type="number" step="0.01" value={formData.precoVenda} onChange={e => setFormData({ ...formData, precoVenda: Number(e.target.value) })} className="w-full pl-14 pr-6 py-4 bg-slate-900 text-white border-none rounded-2xl outline-none shadow-xl shadow-slate-200 font-black text-xl" />
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Sessão 3: Logística e Identificação Única */}
-                            <div className="space-y-6 pt-6 border-t border-slate-100">
-                                <h4 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] border-l-4 border-indigo-500 pl-4">Logística e Rastreamento</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
-                                    {['SKU', 'EAN / Barcode', 'NCM (Fiscal)', 'Quantidade'].map((label, i) => (
-                                        <div key={i}>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">{label}</label>
-                                            <input
-                                                type={label === 'Quantidade' ? 'number' : 'text'}
-                                                value={label === 'SKU' ? formData.sku : label === 'EAN / Barcode' ? formData.ean : label === 'NCM (Fiscal)' ? formData.ncm : formData.quantidadeEstoque}
-                                                onChange={e => {
-                                                    const val = e.target.value;
-                                                    if (label === 'SKU') setFormData({ ...formData, sku: val });
-                                                    if (label === 'EAN / Barcode') setFormData({ ...formData, ean: val });
-                                                    if (label === 'NCM (Fiscal)') setFormData({ ...formData, ncm: val });
-                                                    if (label === 'Quantidade') setFormData({ ...formData, quantidadeEstoque: Number(val) });
-                                                }}
-                                                className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-400 font-bold text-center text-sm uppercase"
-                                            />
-                                        </div>
-                                    ))}
+                            {/* SEÇÃO 3: LOGÍSTICA E ESTOQUE */}
+                            <div className="space-y-6 pt-6 border-t-2 border-slate-50">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-[11px] font-black text-indigo-500 uppercase tracking-[0.2em] border-l-4 border-indigo-500 pl-4">III. Logística e Rastreabilidade</h4>
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full flex items-center gap-1"><Warehouse size={12} /> Controle Físico</span>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    {['Peso (Kg)', 'Altura (cm)', 'Largura (cm)', 'Compr. (cm)'].map((label, i) => (
-                                        <div key={i}>
-                                            <label className="block text-[9px] font-black text-slate-400 uppercase mb-2 tracking-widest text-center">{label}</label>
-                                            <input
-                                                type="number" step="0.01"
-                                                value={label.startsWith('Peso') ? formData.peso : label.startsWith('Altura') ? formData.altura : label.startsWith('Largura') ? formData.largura : formData.comprimento}
-                                                onChange={e => {
-                                                    const val = Number(e.target.value);
-                                                    if (label.startsWith('Peso')) setFormData({ ...formData, peso: val });
-                                                    if (label.startsWith('Altura')) setFormData({ ...formData, altura: val });
-                                                    if (label.startsWith('Largura')) setFormData({ ...formData, largura: val });
-                                                    if (label.startsWith('Compr.')) setFormData({ ...formData, comprimento: val });
-                                                }}
-                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-center text-xs font-bold"
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Sessão 4: Tags e Supplier */}
-                            <div className="space-y-6 pt-6 border-t border-slate-100">
-                                <h4 className="text-[11px] font-black text-amber-600 uppercase tracking-[0.2em] border-l-4 border-amber-500 pl-4">Organização e SEO</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Fornecedor Preferencial</label>
-                                        <select value={formData.fornecedorId} onChange={e => setFormData({ ...formData, fornecedorId: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-amber-500 font-bold text-sm transition-all">
-                                            <option value="">Selecione um fornecedor...</option>
-                                            {suppliers.map(s => (
-                                                <option key={s.id} value={s.id}>{s.name}</option>
-                                            ))}
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">SKU / Cód. Interno</label>
+                                        <input type="text" value={formData.sku} onChange={e => setFormData({ ...formData, sku: e.target.value })} className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold text-xs uppercase" placeholder="EX: ROT-001" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">EAN / Barcode</label>
+                                        <input type="text" value={formData.ean} onChange={e => setFormData({ ...formData, ean: e.target.value })} className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold text-xs" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Unidade de Medida</label>
+                                        <select
+                                            value={formData.unidadeMedida}
+                                            onChange={e => setFormData({ ...formData, unidadeMedida: e.target.value as any })}
+                                            className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-black text-xs"
+                                        >
+                                            <option value="UN">UNIDADE (UN)</option>
+                                            <option value="MT">METRO (MT)</option>
+                                            <option value="KM">QUILÔMETRO (KM)</option>
+                                            <option value="LT">LITRO (LT)</option>
+                                            <option value="KG">QUILOGRAMA (KG)</option>
                                         </select>
                                     </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                    {[
+                                        { label: 'Peso (Kg)', icon: Scale, key: 'peso' },
+                                        { label: 'Alt (cm)', icon: Box, key: 'altura' },
+                                        { label: 'Larg (cm)', icon: Box, key: 'largura' },
+                                        { label: 'Comp (cm)', icon: Box, key: 'comprimento' }
+                                    ].map((dim, i) => (
+                                        <div key={i}>
+                                            <label className="block text-[8px] font-black text-slate-400 uppercase mb-1 tracking-widest text-center">{dim.label}</label>
+                                            <input type="number" step="0.01" value={(formData as any)[dim.key]} onChange={e => setFormData({ ...formData, [dim.key]: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-center font-bold text-xs" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* SEÇÃO 4: ORGANIZAÇÃO E SEO */}
+                            <div className="space-y-6 pt-6 border-t-2 border-slate-50">
+                                <h4 className="text-[11px] font-black text-orange-500 uppercase tracking-[0.2em] border-l-4 border-orange-500 pl-4">IV. Organização e Presença Digital</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
                                     <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Categoria</label>
-                                        <input type="text" value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-amber-500 font-bold text-sm" />
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Categoria do Item</label>
+                                        <input type="text" list="cats-list" value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value })} className="w-full px-6 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-400 transition-all" placeholder="Digitie ou escolha..." />
+                                        <datalist id="cats-list">{availableCategories.map(c => <option key={c} value={c} />)}</datalist>
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Marca</label>
-                                        <input type="text" value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-amber-500 font-bold text-sm" />
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Marca {isBrandRequired && '*'}</label>
+                                        <input required={isBrandRequired} type="text" list="brands-list" value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} className={`w-full px-6 py-3.5 bg-slate-50 border-2 rounded-2xl font-bold text-sm outline-none transition-all ${isBrandRequired && !formData.marca ? 'border-amber-400' : 'border-slate-100 focus:border-orange-400'}`} placeholder="Ex: HP, Intel, Cisco..." />
+                                        <datalist id="brands-list">{availableBrands.map(b => <option key={b} value={b} />)}</datalist>
                                     </div>
-                                    <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100">
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Meta Title (SEO)</label>
-                                            <input type="text" value={formData.seoTitle} onChange={e => setFormData({ ...formData, seoTitle: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-400 font-bold text-xs" />
+                                            <label className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase mb-2 tracking-widest mr-1">Meta Title (SEO) <Globe size={12} /> </label>
+                                            <input type="text" value={formData.seoTitle} onChange={e => setFormData({ ...formData, seoTitle: e.target.value })} className="w-full px-5 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" placeholder="Título para mecanismos de busca..." />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Meta Description (SEO)</label>
-                                            <input type="text" value={formData.seoDescription} onChange={e => setFormData({ ...formData, seoDescription: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-400 font-bold text-xs" />
+                                            <label className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase mb-2 tracking-widest mr-1">Meta Description (SEO) <Globe size={12} /> </label>
+                                            <input type="text" value={formData.seoDescription} onChange={e => setFormData({ ...formData, seoDescription: e.target.value })} className="w-full px-5 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" placeholder="Breve resumo para o Google..." />
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </form>
 
-                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-4 shadow-inner">
-                            <button
-                                type="button"
-                                onClick={() => setIsModalOpen(false)}
-                                className="px-8 py-3.5 font-black text-slate-500 hover:text-slate-900 transition-colors uppercase tracking-widest text-xs"
-                            >
-                                Descartar
+                        {/* Modal Footer Controls */}
+                        <div className="p-8 bg-slate-50 border-t-2 border-slate-100 flex items-center justify-between shadow-inner">
+                            <div className="flex items-center gap-2 text-slate-400 uppercase font-black text-[9px] tracking-[0.2em] italic ml-4 opacity-70">
+                                <AlertCircle size={14} className="text-blue-500" /> Preencha todos os campos obrigatórios (*) para salvar.
+                            </div>
+                            <div className="flex gap-4">
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-10 py-5 font-black text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest text-xs">Cancelar</button>
+                                <button onClick={handleSubmit} className="px-14 py-5 bg-blue-600 text-white rounded-[2rem] hover:bg-blue-700 transition-all font-black text-sm shadow-xl shadow-blue-500/20 uppercase tracking-[0.2em] hover:scale-[1.05] active:scale-95 flex items-center gap-3">
+                                    <CheckCircle2 size={24} /> {isEditing ? 'Atualizar Catálogo' : 'Efetivar Cadastro'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Entrada Inicial (Pós Cadastro) */}
+            {isEntryModalOpen && createdProduct && (
+                <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => !isSubmittingEntry && setIsEntryModalOpen(false)} />
+                    <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in duration-300 max-h-[95vh] flex flex-col border border-slate-200">
+
+                        <div className="p-8 border-b-2 border-slate-50 flex justify-between items-center bg-emerald-50/50">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+                                    <Truck size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Entrada de Estoque</h3>
+                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mt-1 italic">{createdProduct.nome}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => !isSubmittingEntry && setIsEntryModalOpen(false)} className="w-10 h-10 bg-white border border-slate-200 text-slate-400 hover:text-slate-900 rounded-xl flex items-center justify-center transition-all">
+                                <Plus size={24} className="rotate-45" />
                             </button>
-                            <button
-                                onClick={handleSubmit}
-                                className="px-10 py-3.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-black text-xs shadow-lg shadow-blue-200 uppercase tracking-[0.2em] hover:scale-[1.05] active:scale-95"
-                            >
-                                {isEditing ? 'Salvar Alterações' : 'Confirmar Cadastro'}
+                        </div>
+
+                        <form onSubmit={handleEntrySubmit} className="p-8 space-y-8 overflow-y-auto custom-scrollbar bg-white flex-1">
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-6">
+                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-l-4 border-slate-300 pl-3">I. Origem & Documento</h4>
+
+                                    <SearchableSelect
+                                        label="Fornecedor da Carga"
+                                        placeholder="Buscar fornecedor..."
+                                        value={entryForm.fornecedorId}
+                                        onChange={val => setEntryForm({ ...entryForm, fornecedorId: val })}
+                                        options={suppliers.map(s => ({ id: s.id, label: s.name, subLabel: s.document || '' }))}
+                                    />
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Nº Nota Fiscal</label>
+                                        <input
+                                            type="text"
+                                            value={entryForm.documentRef}
+                                            onChange={e => setEntryForm({ ...entryForm, documentRef: e.target.value })}
+                                            className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-emerald-500 transition-all"
+                                            placeholder="Ex: 000.123.456"
+                                        />
+                                    </div>
+
+                                    <SearchableSelect
+                                        label="Depósito / Local de Destino *"
+                                        placeholder="Onde será armazenado?"
+                                        value={entryForm.destinoId}
+                                        onChange={val => setEntryForm({ ...entryForm, destinoId: val })}
+                                        options={storageLocations.map(l => ({ id: l.id, label: l.nome }))}
+                                    />
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Quantidade Recebida *</label>
+                                        <input
+                                            required
+                                            type="number"
+                                            min="1"
+                                            step={createdProduct.unidadeMedida === 'UN' ? '1' : '0.01'}
+                                            value={entryForm.quantidade}
+                                            onChange={e => {
+                                                const q = Number(e.target.value);
+                                                setEntryForm(prev => {
+                                                    const barcodes = [...prev.barcodes];
+                                                    // Ajusta o tamanho do array de barcodes se for UN
+                                                    if (createdProduct.unidadeMedida === 'UN') {
+                                                        if (q > barcodes.length) {
+                                                            while (barcodes.length < q) barcodes.push('');
+                                                        } else {
+                                                            barcodes.length = q;
+                                                        }
+                                                    }
+                                                    return { ...prev, quantidade: q, barcodes };
+                                                });
+                                            }}
+                                            className="w-full px-5 py-3.5 bg-emerald-50 border border-emerald-100 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all text-center"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-l-4 border-slate-300 pl-3">II. Códigos de Barras / Seriais</h4>
+                                    <p className="text-[10px] font-bold text-slate-500 leading-relaxed mb-4">
+                                        Se os produtos possuírem códigos de barras ou números de série individuais, liste-os abaixo para registrar no catálogo.
+                                    </p>
+
+                                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                        {createdProduct.unidadeMedida === 'UN' ? (
+                                            entryForm.barcodes.map((bc, idx) => (
+                                                <div key={idx} className="relative">
+                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300">{(idx + 1).toString().padStart(2, '0')}</span>
+                                                    <input
+                                                        type="text"
+                                                        value={bc}
+                                                        onChange={e => {
+                                                            const newBc = [...entryForm.barcodes];
+                                                            newBc[idx] = e.target.value;
+                                                            setEntryForm({ ...entryForm, barcodes: newBc });
+                                                        }}
+                                                        placeholder="Cód. Barras / Serial"
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-emerald-500 transition-all"
+                                                    />
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={entryForm.barcodes[0] || ''}
+                                                    onChange={e => setEntryForm({ ...entryForm, barcodes: [e.target.value] })}
+                                                    placeholder="Cód. Barras principal (Opcional)"
+                                                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-emerald-500 transition-all"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div className="p-8 bg-slate-50 border-t-2 border-slate-100 flex items-center justify-between">
+                            <button type="button" onClick={() => !isSubmittingEntry && setIsEntryModalOpen(false)} className="px-8 py-4 font-black text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest text-xs">Pular Carga Inicial</button>
+                            <button onClick={handleEntrySubmit} disabled={isSubmittingEntry} className="px-10 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all font-black text-sm shadow-xl shadow-emerald-500/20 uppercase tracking-[0.2em] flex items-center gap-2">
+                                {isSubmittingEntry ? 'Registrando...' : 'Registrar Movimentação'}
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+            {/* Toast e Dialog */}
+            {toast && (
+                <div className={`fixed top-6 right-6 z-[999] px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl flex items-center gap-3 border ${toast.type === 'success' ? 'bg-slate-900 text-white border-emerald-500' :
+                        toast.type === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-500' :
+                            'bg-rose-600 text-white border-rose-400'
+                    }`}>
+                    {toast.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500" />}
+                    {toast.type === 'warning' && <AlertTriangle size={16} className="text-amber-500" />}
+                    {toast.type === 'error' && <AlertTriangle size={16} className="text-white" />}
+                    {toast.message}
                 </div>
             )}
         </div>

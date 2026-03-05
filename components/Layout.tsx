@@ -4,6 +4,8 @@ import { User, UserRole, Company, AppNotification, NotificationType, Customer, S
 import { authService } from '../services/authService';
 import { dbService } from '../services/dbService';
 import { isTrialUser, cleanupTrial, getTrialGlobalSearch } from '../services/trialService';
+import GlobalChat from './GlobalChat';
+
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -225,10 +227,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
   } else {
     navItems.push({ path: '/dashboard', label: 'Painel', icon: 'fa-chart-line' });
 
-    // Chat: visível se ativo na empresa OU se é trial (demo sempre mostra)
-    if (company?.settings.enableChat || isTrial) {
-      navItems.push({ path: '/chat', label: 'Mensagens', icon: 'fa-comments' });
-    }
 
     if (isAdmin || isTrial) {
       navItems.push({ path: '/clientes', label: 'Clientes', icon: 'fa-users' });
@@ -431,7 +429,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
                   const titles: Record<string, string> = {
                     dashboard: 'Painel',
                     pdv: 'Frente de Caixa (PDV)',
-                    chat: 'Mensagens',
                     clientes: 'Clientes',
                     ordens: 'Ordens de Serviço',
                     usuarios: 'Usuários',
@@ -664,6 +661,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
           )
         }
       </div> {/* end inner flex */}
+
+      {/* Chat Flutuante Global */}
+      <GlobalChat company={company} />
     </div>
   );
 };

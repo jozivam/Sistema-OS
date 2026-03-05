@@ -231,9 +231,9 @@ export interface Product {
   variacoes?: any; // JSON para variações
   categoria?: string;
   marca?: string;
+  unidadeMedida?: 'UN' | 'MT' | 'KM' | 'LT' | 'KG';
   seoTitle?: string;
   seoDescription?: string;
-  fornecedorId?: string;
   valorCompra?: number;
   margemLucro?: number; // Porcentagem para venda
   status: 'ACTIVE' | 'INACTIVE';

@@ -12,39 +12,33 @@ const AwningIcon = () => (
     </svg>
 );
 
-// Mocks
-interface Product {
+// Removendo mocks antigos
+
+interface CartItem {
     id: string;
-    name: string;
-    sku: string;
-    brand: string;
-    weight: string;
-    size: string;
-    stock: number;
-    price: number;
-    imageUrl?: string;
-}
-
-const MOCK_PRODUCTS: Product[] = [
-    { id: '1', name: 'Roteador Wi-Fi 6 AX1500', sku: 'RT-1500', brand: 'TP-Link', weight: '0.5 kg', size: '20x15 cm', stock: 12, price: 349.90 },
-    { id: '2', name: 'Bobina de Cabo de Rede CAT6 (Metro)', sku: 'CB-CAT6', brand: 'Furukawa', weight: '0.1 kg', size: 'Métrico', stock: 1540, price: 4.50 },
-    { id: '3', name: 'Conector RJ45 CAT6 (Pacote 100)', sku: 'RJ-100P', brand: 'Intelbras', weight: '0.2 kg', size: 'Padrão', stock: 25, price: 85.00 },
-];
-
-interface CartItem extends Product {
     cartId: string;
+    name: string;
     quantity: number;
+    price: number;
     discount: number;
     subtotal: number;
+    unidadeMedida: string;
+    origem_id: string; // Depósito de onde sai o item
 }
 
 const Pdv: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'produto' | 'cliente' | 'pagamento'>('produto');
     const [barcodeReader, setBarcodeReader] = useState(true);
 
+    const [productsList, setProductsList] = useState<any[]>([]);
+    const [storageLocations, setStorageLocations] = useState<any[]>([]);
+    const [selectedLocationId, setSelectedLocationId] = useState('');
+    const [companyId, setCompanyId] = useState('');
+    const [currentUser, setCurrentUser] = useState<any>(null);
+
     // Produto State
     const [productSearch, setProductSearch] = useState('');
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [selectedProduct, setSelectedProduct] = useState<any>(null);
     const [inputQuantity, setInputQuantity] = useState<string>('1.00');
     const [inputDiscount, setInputDiscount] = useState<string>('0.00');
     const [inputComment, setInputComment] = useState('');
@@ -55,10 +49,21 @@ const Pdv: React.FC = () => {
     const [customersList, setCustomersList] = useState<Customer[]>([]);
 
     useEffect(() => {
-        const loadCustomers = async () => {
+        const loadInitialData = async () => {
             try {
                 const user = await authService.getCurrentUser();
                 if (!user) return;
+                setCurrentUser(user);
+                setCompanyId(user.companyId || '');
+
+                const [pData, locData] = await Promise.all([
+                    dbService.getProducts(user.companyId!),
+                    dbService.getStorageLocations(user.companyId!)
+                ]);
+                setProductsList(pData || []);
+                setStorageLocations(locData || []);
+                if (locData.length > 0) setSelectedLocationId(locData[0].id);
+
                 const trial = isTrialUser(user);
                 if (trial) {
                     setCustomersList(getTrialCustomers());
@@ -67,10 +72,10 @@ const Pdv: React.FC = () => {
                     setCustomersList(fetchedCustomers);
                 }
             } catch (error) {
-                console.error("Erro ao carregar clientes do PDV:", error);
+                console.error("Erro ao carregar dados do PDV:", error);
             }
         };
-        loadCustomers();
+        loadInitialData();
     }, []);
 
     // Pagamento State
@@ -91,15 +96,28 @@ const Pdv: React.FC = () => {
 
     // Ações de Busca
     const filteredProducts = productSearch.trim().length > 0
-        ? MOCK_PRODUCTS.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase()))
+        ? productsList.filter(p =>
+            p.nome.toLowerCase().includes(productSearch.toLowerCase()) ||
+            (p.sku && p.sku.toLowerCase().includes(productSearch.toLowerCase()))
+        )
         : [];
 
     const filteredCustomers = customerSearch.trim().length > 0
         ? customersList.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || (c.document && c.document.replace(/\D/g, '').includes(customerSearch.replace(/\D/g, ''))))
         : [];
 
-    const handleSelectProduct = (p: Product) => {
-        setSelectedProduct(p);
+    const handleSelectProduct = (p: any) => {
+        setSelectedProduct({
+            id: p.id,
+            name: p.nome,
+            sku: p.sku || 'N/A',
+            brand: p.marca || '---',
+            weight: p.peso ? `${p.peso}kg` : '---',
+            size: p.altura ? `${p.altura}x${p.largura}x${p.comprimento}cm` : '---',
+            stock: p.quantidadeEstoque || 0,
+            price: p.precoVenda || 0,
+            unidadeMedida: p.unidadeMedida || 'UN'
+        } as any);
         setProductSearch('');
         setInputQuantity('1.00');
         setInputDiscount('0.00');
@@ -111,19 +129,92 @@ const Pdv: React.FC = () => {
     };
 
     const handleAddToCart = () => {
-        if (!selectedProduct) return;
-        setCart(prev => [...prev, {
-            ...selectedProduct,
-            cartId: Math.random().toString(36).substr(2, 9),
-            quantity: parsedQty,
-            discount: parsedDisc,
-            subtotal: currentSubtotal
-        }]);
+        if (!selectedProduct || !selectedLocationId) {
+            alert("Selecione um produto e o depósito de origem.");
+            return;
+        }
+
+        // Verifica se já tem no carrinho saindo do mesmo lugar
+        const existingIdx = cart.findIndex(c => c.id === selectedProduct.id && c.origem_id === selectedLocationId);
+
+        if (existingIdx >= 0) {
+            const updatedCart = [...cart];
+            updatedCart[existingIdx].quantity += parsedQty;
+            updatedCart[existingIdx].subtotal = (updatedCart[existingIdx].price * (1 - updatedCart[existingIdx].discount / 100)) * updatedCart[existingIdx].quantity;
+            setCart(updatedCart);
+        } else {
+            setCart(prev => [...prev, {
+                id: selectedProduct.id,
+                cartId: Math.random().toString(36).substr(2, 9),
+                name: selectedProduct.name,
+                price: selectedProduct.price,
+                unidadeMedida: (selectedProduct as any).unidadeMedida,
+                quantity: parsedQty,
+                discount: parsedDisc,
+                subtotal: currentSubtotal,
+                origem_id: selectedLocationId
+            }]);
+        }
+
         // Reset inputs
         setSelectedProduct(null);
+        setProductSearch('');
         setInputQuantity('1.00');
         setInputDiscount('0.00');
         setInputComment('');
+    };
+
+    const [isFinalizing, setIsFinalizing] = useState(false);
+    const handleFinalizarVenda = async () => {
+        if (cart.length === 0) return;
+        if (!selectedPaymentMode) {
+            alert("Selecione uma forma de pagamento.");
+            return;
+        }
+
+        try {
+            setIsFinalizing(true);
+            const vendaPayload = {
+                company_id: companyId,
+                customer_id: selectedCustomer?.id || null,
+                subtotal: headCartTotal,
+                desconto: 0, // Poderia somar descontos individuais
+                taxa_maquina: addedFee,
+                total: ultimateTotal,
+                forma_pagamento: selectedPaymentMode,
+                parcelas: creditInstallments,
+                status: 'COMPLETED',
+                user_id: currentUser?.id,
+                user_name: currentUser?.name
+            };
+
+            const itensPayload = cart.map(item => ({
+                productId: item.id,
+                quantidade: item.quantity,
+                precoUnitario: item.price,
+                desconto: item.discount,
+                subtotal: item.subtotal,
+                origem_id: item.origem_id
+            }));
+
+            await dbService.createVenda(vendaPayload, itensPayload);
+
+            alert("Venda realizada com sucesso! Estoque atualizado.");
+            setCart([]);
+            setSelectedCustomer(null);
+            setSelectedPaymentMode(null);
+            setActiveTab('produto');
+
+            // Recarrega produtos para ver o estoque novo
+            const pData = await dbService.getProducts(companyId);
+            setProductsList(pData);
+
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao finalizar venda.");
+        } finally {
+            setIsFinalizing(false);
+        }
     };
 
     const headCartTotal = cart.reduce((acc, curr) => acc + curr.subtotal, 0);
@@ -202,9 +293,16 @@ const Pdv: React.FC = () => {
                                 {/* Row 1: Lista e Leitor */}
                                 <div className="flex justify-between items-end mb-5">
                                     <div className="w-[45%]">
-                                        <label className="block text-[13px] font-bold text-gray-700 mb-1.5">Lista de preço</label>
-                                        <select className="w-full border-2 border-slate-200 text-slate-600 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-600 appearance-none font-medium bg-white">
-                                            <option>Tabela Padrão (Geral)</option>
+                                        <label className="block text-[13px] font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Depósito de Origem</label>
+                                        <select
+                                            value={selectedLocationId}
+                                            onChange={e => setSelectedLocationId(e.target.value)}
+                                            className="w-full border-2 border-slate-200 text-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-600 appearance-none font-bold bg-white"
+                                        >
+                                            <option value="">Selecione o local...</option>
+                                            {storageLocations.map(loc => (
+                                                <option key={loc.id} value={loc.id}>{loc.nome}</option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div className="flex flex-col items-center">
@@ -560,8 +658,16 @@ const Pdv: React.FC = () => {
                         <button className="flex-1 border-2 border-slate-300 text-slate-600 bg-white rounded-xl h-14 font-bold tracking-wide hover:border-slate-400 hover:bg-slate-50 transition-colors shadow-sm">
                             Excluir Venda
                         </button>
-                        <button className="flex-[2] bg-indigo-600 text-white rounded-xl h-14 font-black tracking-wide hover:bg-indigo-700 transition-colors shadow-[0_5px_15px_rgba(79,70,229,0.3)] hover:shadow-[0_5px_15px_rgba(79,70,229,0.5)] active:scale-[0.98] flex items-center justify-center gap-2">
-                            <CheckCircle2 strokeWidth={3} /> FINALIZAR VENDA
+                        <button
+                            onClick={handleFinalizarVenda}
+                            disabled={isFinalizing || cart.length === 0}
+                            className="flex-[2] bg-indigo-600 text-white rounded-xl h-14 font-black tracking-wide hover:bg-indigo-700 transition-colors shadow-[0_5px_15px_rgba(79,70,229,0.3)] hover:shadow-[0_5px_15px_rgba(79,70_229,0.5)] active:scale-[0.98] disabled:bg-slate-300 disabled:shadow-none flex items-center justify-center gap-2"
+                        >
+                            {isFinalizing ? (
+                                <span className="animate-pulse">FINALIZANDO...</span>
+                            ) : (
+                                <><CheckCircle2 strokeWidth={3} /> FINALIZAR VENDA</>
+                            )}
                         </button>
                     </div>
 

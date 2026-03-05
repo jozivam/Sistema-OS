@@ -7,7 +7,7 @@ import {
   isTrialUser, getTrialOrders, getTrialCustomers, saveTrialOrders,
   TRIAL_COMPANY_ID, TRIAL_ADMIN_ID, TRIAL_TECH_ID
 } from '../services/trialService';
-import { OrderStatus, ServiceOrder, UserRole, OrderPost, OrderAttachment, User, Company } from '../types';
+import { OrderStatus, ServiceOrder, UserRole, OrderPost, OrderAttachment, User, Company, StockMovement, Product, StorageLocation } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -91,6 +91,13 @@ const OrderDetails: React.FC = () => {
   const [isSpecialPurchaseOpen, setIsSpecialPurchaseOpen] = useState(false);
   const [specialPurchaseForm, setSpecialPurchaseForm] = useState({ productName: '', quantity: 1, price: 0, supplierName: '' });
 
+  // Materiais Reais
+  const [materials, setMaterials] = useState<StockMovement[]>([]);
+  const [isAddingMaterial, setIsAddingMaterial] = useState(false);
+  const [materialForm, setMaterialForm] = useState({ productId: '', locationId: '', quantity: 1 });
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [locations, setLocations] = useState<StorageLocation[]>([]);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const loadOrderData = async () => {
@@ -118,17 +125,17 @@ const OrderDetails: React.FC = () => {
           const trialCustomers = getTrialCustomers();
           const foundCustomer = trialCustomers.find(c => c.id === foundOrder.customerId);
           setCustomer(foundCustomer);
-          // UsuÃ¡rios disponÃ­veis para o select de tÃ©cnico
+          // Usuá¡rios disponí­veis para o select de té©cnico
           setUsers([
             { id: TRIAL_ADMIN_ID, name: fetchedUser!.name + ' (Admin)', email: 'admin@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID },
-            { id: TRIAL_TECH_ID, name: fetchedUser!.name + ' (TÃ©cnico)', email: 'tecnico@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID },
+            { id: TRIAL_TECH_ID, name: fetchedUser!.name + ' (Técnico)', email: 'tecnico@demo.com', role: UserRole.TRIAL, companyId: TRIAL_COMPANY_ID },
           ]);
           const trialCompany: Company = {
             id: TRIAL_COMPANY_ID, name: 'Demo', corporateName: 'Demo', tradeName: 'Demo',
             document: '', email: '', phone: '', address: '', city: '',
             plan: 'DIAMANTE' as any, period: 'MENSAL' as any, monthlyFee: 0,
             status: 'ACTIVE', createdAt: new Date().toISOString(),
-            settings: { enableAI: true, enableAttachments: true, enableChat: true, enableHistory: true, orderTypes: ['InstalaÃ§Ã£o', 'ManutenÃ§Ã£o', 'Reparo', 'ConfiguraÃ§Ã£o', 'Visita TÃ©cnica'] }
+            settings: { enableAI: true, enableAttachments: true, enableChat: true, enableHistory: true, orderTypes: ['Instalação', 'Manutenção', 'Reparo', 'Configuração', 'Visita Técnica'] }
           };
           setCompany(trialCompany);
         }
@@ -149,17 +156,25 @@ const OrderDetails: React.FC = () => {
           setEditedTechId(fetchedOrder.techId || '');
 
           if (fetchedUser?.companyId) {
-            const [fetchedCustomers, fetchedUsers, fetchedCompany] = await Promise.all([
+            const [fetchedCustomers, fetchedUsers, fetchedCompany, fetchedMaterials, fetchedProducts, fetchedLocations] = await Promise.all([
               dbService.getCustomers(fetchedUser.companyId),
               dbService.getUsers(fetchedUser.companyId),
-              dbService.getCompany(fetchedUser.companyId)
+              dbService.getCompany(fetchedUser.companyId),
+              dbService.getStockMovements(fetchedUser.companyId),
+              dbService.getProducts(fetchedUser.companyId),
+              dbService.getStorageLocations(fetchedUser.companyId)
             ]);
 
             setUsers(fetchedUsers);
             setCompany(fetchedCompany);
+            setAllProducts(fetchedProducts);
+            setLocations(fetchedLocations);
 
             const foundCustomer = fetchedCustomers.find(c => c.id === fetchedOrder.customerId);
             setCustomer(foundCustomer);
+
+            // Filtra movimentações desta OS
+            setMaterials(fetchedMaterials.filter(m => m.documentRef === id && m.tipo === 'SAIDA'));
           }
         }
       }
@@ -167,6 +182,60 @@ const OrderDetails: React.FC = () => {
       console.error("Erro ao carregar detalhes da OS:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reloadMaterials = async () => {
+    if (!currentUser?.companyId || !id) return;
+    const moves = await dbService.getStockMovements(currentUser.companyId);
+    setMaterials(moves.filter(m => m.documentRef === id && m.tipo === 'SAIDA'));
+  };
+
+  const handleAddMaterial = async () => {
+    if (!materialForm.productId || !materialForm.locationId || materialForm.quantity <= 0) return;
+    try {
+      await dbService.createStockMovement({
+        companyId: currentUser?.companyId!,
+        produtoId: materialForm.productId,
+        tipo: 'SAIDA',
+        quantidade: materialForm.quantity,
+        origemId: materialForm.locationId,
+        documentRef: id,
+        userId: currentUser?.id!,
+        userName: currentUser?.name!,
+        observacoes: `Material utilizado na OS #${order?.id.slice(-4)}`
+      });
+      setMaterialForm({ productId: '', locationId: '', quantity: 1 });
+      setIsAddingMaterial(false);
+      reloadMaterials();
+      setToast({ message: 'Material adicionado e baixado do estoque!', type: 'success' });
+    } catch (error) {
+      setToast({ message: 'Erro ao adicionar material.', type: 'error' });
+    }
+  };
+
+  const handleRemoveMaterial = async (movementId: string) => {
+    const item = materials.find(m => m.id === movementId);
+    if (!item) return;
+
+    try {
+      if (confirm('Deseja devolver este material ao estoque?')) {
+        await dbService.createStockMovement({
+          companyId: currentUser?.companyId!,
+          produtoId: item.produtoId,
+          tipo: 'ENTRADA',
+          quantidade: item.quantidade,
+          destinoId: item.origemId,
+          documentRef: id,
+          userId: currentUser?.id!,
+          userName: currentUser?.name!,
+          observacoes: `Devolução de material da OS #${order?.id.slice(-4)}`
+        });
+        reloadMaterials();
+        setToast({ message: 'Material devolvido ao estoque!', type: 'success' });
+      }
+    } catch (error) {
+      setToast({ message: 'Erro ao devolver material.', type: 'error' });
     }
   };
 
@@ -768,41 +837,63 @@ const OrderDetails: React.FC = () => {
             </div>
           </div>
 
-          {/* Lista de Materiais Mock (Em breve DB real) */}
           <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar">
-            {/* Simulação de um Item Adicionado */}
             <div className="space-y-4">
-              {/* Item 1 */}
-              <div className="group relative border border-slate-100 rounded-xl p-3 hover:border-blue-200 hover:shadow-sm transition-all bg-white">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800">Conector RJ45 (NET-001)</h4>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Retirado do: Veículo Pablo</p>
-                  </div>
-                  <span className="bg-emerald-50 text-emerald-700 font-black text-xs px-2 py-0.5 rounded border border-emerald-100/50 block">5 un</span>
+              {materials.length === 0 ? (
+                <div className="text-center py-10">
+                  <i className="fa-solid fa-boxes-stacked text-3xl text-slate-200 mb-3 block"></i>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nenhum material utilizado</p>
                 </div>
-                <div className="flex justify-end gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="text-[10px] font-bold text-rose-500 hover:bg-rose-50 px-2 py-1 rounded transition-colors uppercase tracking-wider">Devolver</button>
-                </div>
-              </div>
+              ) : (
+                materials.map(m => {
+                  const prod = allProducts.find(p => p.id === m.produtoId);
+                  const loc = locations.find(l => l.id === m.origemId);
+                  return (
+                    <div key={m.id} className="group relative border border-slate-100 rounded-xl p-3 hover:border-blue-200 hover:shadow-sm transition-all bg-white">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800">{prod?.nome || 'Produto não encontrado'}</h4>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Retirado do: {loc?.nome || 'Local Externo'}</p>
+                        </div>
+                        <span className="bg-emerald-50 text-emerald-700 font-black text-xs px-2 py-0.5 rounded border border-emerald-100/50 block">{m.quantidade} un</span>
+                      </div>
+                      <div className="flex justify-end gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {!isLocked && (
+                          <button
+                            onClick={() => handleRemoveMaterial(m.id)}
+                            className="text-[10px] font-bold text-rose-500 hover:bg-rose-50 px-2 py-1 rounded transition-colors uppercase tracking-wider"
+                          >
+                            Devolver
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
 
-              {/* Add Botão Grande (Placeholder) */}
-              <div className="pt-2 flex flex-col gap-2">
-                <button onClick={() => setToast({ message: 'Nova interface de Venda/Uso de estoque em breve!', type: 'success' })} className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/30 rounded-xl transition-all font-semibold text-xs flex flex-col items-center justify-center gap-1 group">
-                  <i className="fa-solid fa-plus text-base group-hover:scale-110 transition-transform"></i>
-                  <span>Adicionar Material do Estoque</span>
-                </button>
-                <button onClick={() => setIsSpecialPurchaseOpen(true)} className="w-full py-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all font-semibold text-xs flex items-center justify-center gap-2 group">
-                  <i className="fa-solid fa-cart-shopping text-sm group-hover:scale-110 transition-transform"></i>
-                  Registrar Compra Externa (Avulsa)
-                </button>
-              </div>
+              {/* Botões de Ação */}
+              {!isLocked && (
+                <div className="pt-2 flex flex-col gap-2">
+                  <button
+                    onClick={() => setIsAddingMaterial(true)}
+                    className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/30 rounded-xl transition-all font-semibold text-xs flex flex-col items-center justify-center gap-1 group"
+                  >
+                    <i className="fa-solid fa-plus text-base group-hover:scale-110 transition-transform"></i>
+                    <span>Adicionar Material do Estoque</span>
+                  </button>
+                  <button onClick={() => setIsSpecialPurchaseOpen(true)} className="w-full py-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all font-semibold text-xs flex items-center justify-center gap-2 group">
+                    <i className="fa-solid fa-cart-shopping text-sm group-hover:scale-110 transition-transform"></i>
+                    Registrar Compra Externa (Avulsa)
+                  </button>
+                </div>
+              )}
 
               <div className="bg-amber-50 rounded-xl p-3 border border-amber-100/50 mt-4">
                 <div className="flex gap-2">
                   <i className="fa-solid fa-lightbulb text-amber-500 text-xs mt-0.5"></i>
                   <p className="text-[10px] font-medium text-amber-700 leading-relaxed">
-                    Cliente quer comprar um roteador? Você poderá transferir diretamente do seu estoque para o estoque do cliente, ou usar o PDV para abater os materiais utilizados no serviço.
+                    Toda vez que você adicionar um material, o saldo será abatido automaticamente do local escolhido. Se remover (devolver), o saldo volta para o estoque.
                   </p>
                 </div>
               </div>
@@ -811,6 +902,82 @@ const OrderDetails: React.FC = () => {
         </div>
 
       </div>
+
+      {/* ── Modal Adicionar Material do Estoque ── */}
+      {isAddingMaterial && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-blue-50/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md">
+                  <i className="fa-solid fa-box-open"></i>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Utilizar Material</h3>
+                  <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider mt-0.5">Baixa Interna de Estoque</p>
+                </div>
+              </div>
+              <button onClick={() => setIsAddingMaterial(false)} className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-800 transition-colors shadow-sm">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Selecione o Produto</label>
+                <select
+                  value={materialForm.productId}
+                  onChange={e => setMaterialForm({ ...materialForm, productId: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
+                >
+                  <option value="">Escolha um item...</option>
+                  {allProducts.map(p => (
+                    <option key={p.id} value={p.id}>{p.nome} (SKU: {p.sku})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Origem / Depósito</label>
+                  <select
+                    value={materialForm.locationId}
+                    onChange={e => setMaterialForm({ ...materialForm, locationId: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
+                  >
+                    <option value="">Onde está o item?</option>
+                    {locations.map(l => (
+                      <option key={l.id} value={l.id}>{l.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Quantidade</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={materialForm.quantity}
+                    onChange={e => setMaterialForm({ ...materialForm, quantity: Number(e.target.value) })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-black text-center text-lg"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white border-t border-slate-100 flex gap-3">
+              <button onClick={() => setIsAddingMaterial(false)} className="flex-1 py-3 border border-slate-200 rounded-xl font-semibold text-sm text-slate-500 hover:bg-slate-50 transition-all">Cancelar</button>
+              <button
+                onClick={handleAddMaterial}
+                disabled={!materialForm.productId || !materialForm.locationId || materialForm.quantity <= 0}
+                className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <i className="fa-solid fa-check"></i>
+                Confirmar Saída
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal Finalizar ── */}
       {isFinishModalOpen && (

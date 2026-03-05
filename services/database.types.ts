@@ -57,7 +57,15 @@ export interface IDatabaseService {
     // Movimentações
     getStockMovements(companyId?: string, productId?: string): Promise<StockMovement[]>;
     createStockMovement(movement: any): Promise<StockMovement>;
+    getProductBalance(productId: string, locationId: string): Promise<number>;
+    getStocksByLocation(companyId: string, locationId: string): Promise<Record<string, number>>;
+    deleteStockMovement(movementId: string): Promise<void>;
 
+    // Vendas / PDV
+    getVendas(companyId?: string): Promise<any[]>;
+    getVenda(id: string): Promise<any | null>;
+    createVenda(venda: any, itens: any[]): Promise<any>;
+    deleteVenda(id: string): Promise<void>;
 
     // Chat
     getMessages(companyId?: string): Promise<ChatMessage[]>;

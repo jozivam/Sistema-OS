@@ -80,14 +80,19 @@ const Reports: React.FC = () => {
 
     // Filtro para ordens finalizadas no período selecionado
     const finishedInPeriod = orders.filter(o => {
-      if (!o.finishedAt) return false;
-      const fDateStr = o.finishedAt.split('T')[0];
+      if (o.status !== OrderStatus.FINISHED) return false;
+
+      // Fallback: se não tiver finishedAt, usa o createdAt (garante que ordens finalizadas apareçam)
+      const dateToUse = o.finishedAt || o.createdAt;
+      if (!dateToUse) return false;
+
+      const fDateStr = dateToUse.split('T')[0];
       return filterBase(o) && fDateStr >= startDate && fDateStr <= endDate;
     });
 
-    // Cálculo de Pendentes
+    // Cálculo de Pendentes (Tudo que não está finalizado nem cancelado)
     const totalPending = orders.filter(o => {
-      const isPending = o.status === OrderStatus.OPEN || o.status === OrderStatus.IN_PROGRESS || o.status === OrderStatus.PAUSED;
+      const isPending = o.status !== OrderStatus.FINISHED && o.status !== OrderStatus.CANCELLED;
       return isPending && filterBase(o);
     }).length;
 
@@ -103,8 +108,11 @@ const Reports: React.FC = () => {
 
     const yearToUse = parseInt(selectedYear);
     const totalFinishedYear = orders.filter(o => {
-      if (!o.finishedAt) return false;
-      const fYear = new Date(o.finishedAt).getFullYear();
+      if (o.status !== OrderStatus.FINISHED) return false;
+      const dateToUse = o.finishedAt || o.createdAt;
+      if (!dateToUse) return false;
+
+      const fYear = new Date(dateToUse).getFullYear();
       return filterBase(o) && fYear === yearToUse;
     }).length;
 
@@ -118,8 +126,11 @@ const Reports: React.FC = () => {
     const monthsNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const monthlyData = monthsNames.map((month, index) => {
       const count = orders.filter(o => {
-        if (!o.finishedAt) return false;
-        const fDate = new Date(o.finishedAt);
+        if (o.status !== OrderStatus.FINISHED) return false;
+        const dateToUse = o.finishedAt || o.createdAt;
+        if (!dateToUse) return false;
+
+        const fDate = new Date(dateToUse);
         return filterBase(o) && fDate.getMonth() === index && fDate.getFullYear() === yearToUse;
       }).length;
       return [month, count] as [string, number];
