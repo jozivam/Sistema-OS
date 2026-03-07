@@ -11,6 +11,7 @@ export default function DepositosSaldos() {
     const [companyId, setCompanyId] = useState<string | null>(null);
     const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
     const [localStocks, setLocalStocks] = useState<Record<string, number>>({});
+    const [deliveryDates, setDeliveryDates] = useState<Record<string, string>>({});
     const [searchTerm, setSearchTerm] = useState('');
 
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
@@ -87,8 +88,12 @@ export default function DepositosSaldos() {
     const loadLocalStocks = async () => {
         if (!companyId || !activeLocationId) return;
         try {
-            const stocks = await dbService.getStocksByLocation(companyId, activeLocationId);
+            const [stocks, dates] = await Promise.all([
+                dbService.getStocksByLocation(companyId, activeLocationId),
+                dbService.getLatestDeliveryDates(companyId, activeLocationId)
+            ]);
             setLocalStocks(stocks);
+            setDeliveryDates(dates);
         } catch (error) {
             console.error("Erro ao carregar saldos locais:", error);
         }
@@ -335,7 +340,7 @@ export default function DepositosSaldos() {
                                     <tr className="bg-slate-50 text-slate-400">
                                         <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest">Produto / SKU</th>
                                         <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-center">Saldo Atual</th>
-                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-center">Saúde</th>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-center">Entrega</th>
                                         <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-right">Ações Rápidas</th>
                                     </tr>
                                 </thead>
@@ -360,15 +365,18 @@ export default function DepositosSaldos() {
                                                         <div className="text-2xl font-black text-slate-900">{qtd}</div>
                                                     </td>
                                                     <td className="px-8 py-6">
-                                                        <div className="flex justify-center">
-                                                            {qtd < 10 ? (
-                                                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 font-black text-[10px] uppercase tracking-wider animate-pulse">
-                                                                    <AlertTriangle size={12} /> BAIXO ESTOQUE
-                                                                </div>
+                                                        <div className="flex justify-center flex-col items-center">
+                                                            {deliveryDates[product.id] ? (
+                                                                <>
+                                                                    <div className="text-[10px] font-black text-slate-900 uppercase">
+                                                                        {new Date(deliveryDates[product.id]).toLocaleDateString('pt-BR')}
+                                                                    </div>
+                                                                    <div className="text-[9px] font-bold text-slate-400">
+                                                                        {new Date(deliveryDates[product.id]).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </div>
+                                                                </>
                                                             ) : (
-                                                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 font-black text-[10px] uppercase tracking-wider">
-                                                                    <CheckCircle2 size={12} /> ESTÁVEL
-                                                                </div>
+                                                                <span className="text-[10px] font-bold text-slate-300 uppercase italic">N/A</span>
                                                             )}
                                                         </div>
                                                     </td>
@@ -545,8 +553,8 @@ export default function DepositosSaldos() {
             {/* Toast e Dialog */}
             {toast && (
                 <div className={`fixed top-6 right-6 z-[999] px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl flex items-center gap-3 border ${toast.type === 'success' ? 'bg-slate-900 text-white border-emerald-500' :
-                        toast.type === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-500' :
-                            'bg-rose-600 text-white border-rose-400'
+                    toast.type === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-500' :
+                        'bg-rose-600 text-white border-rose-400'
                     }`}>
                     {toast.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500" />}
                     {toast.type === 'warning' && <AlertTriangle size={16} className="text-amber-500" />}

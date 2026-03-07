@@ -44,9 +44,12 @@ export interface IDatabaseService {
     // Produtos
     getProducts(companyId?: string): Promise<Product[]>;
     getProduct(id: string): Promise<Product | null>;
+    getNextSku(companyId: string): Promise<string>;
     createProduct(product: any): Promise<Product>;
     updateProduct(id: string, product: Partial<Product>): Promise<void>;
     deleteProduct(id: string): Promise<void>;
+    removeCategory(category: string, companyId: string): Promise<void>;
+    removeBrand(brand: string, companyId: string): Promise<void>;
 
     // Locais de Armazenamento (Depósitos)
     getStorageLocations(companyId?: string): Promise<StorageLocation[]>;
@@ -59,6 +62,7 @@ export interface IDatabaseService {
     createStockMovement(movement: any): Promise<StockMovement>;
     getProductBalance(productId: string, locationId: string): Promise<number>;
     getStocksByLocation(companyId: string, locationId: string): Promise<Record<string, number>>;
+    getLatestDeliveryDates(companyId: string, locationId: string): Promise<Record<string, string>>;
     deleteStockMovement(movementId: string): Promise<void>;
 
     // Vendas / PDV

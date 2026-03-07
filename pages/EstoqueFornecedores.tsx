@@ -168,7 +168,9 @@ export default function EstoqueFornecedores() {
 
             // Busca as movimentações do fornecedor (apenas ENTRADA)
             const moves = await dbService.getStockMovements(companyId);
-            const filteredMoves = moves.filter(m => m.fornecedorId === fornecedor.id && m.tipo === 'ENTRADA');
+            const filteredMoves = moves
+                .filter(m => m.fornecedorId === fornecedor.id && m.tipo === 'ENTRADA')
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             setSupplierMovements(filteredMoves);
 
             // Carrega os produtos para ter o mapa de nomes
@@ -251,12 +253,13 @@ export default function EstoqueFornecedores() {
                                     <td colSpan={6} className="text-center py-6 text-gray-500">Nenhum fornecedor encontrado.</td>
                                 </tr>
                             ) : filteredFornecedores.map((f) => (
-                                <tr key={f.id} className="hover:bg-gray-50/50 transition-colors group">
+                                <tr
+                                    key={f.id}
+                                    className="hover:bg-gray-50/50 transition-colors group cursor-pointer"
+                                    onClick={() => openSupplierDetails(f)}
+                                >
                                     <td className="px-6 py-4">
-                                        <div
-                                            className="font-bold text-gray-900 border-b-2 inline-block border-transparent hover:border-blue-500 cursor-pointer"
-                                            onClick={() => openSupplierDetails(f)}
-                                        >
+                                        <div className="font-bold text-gray-900">
                                             {f.name}
                                         </div>
                                         <div className="text-xs font-semibold text-gray-500 mt-0.5">{f.corporateName}</div>
@@ -274,10 +277,16 @@ export default function EstoqueFornecedores() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 flex items-center justify-end gap-2">
-                                        <button onClick={() => handleEdit(f)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleEdit(f); }}
+                                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                        >
                                             <Edit size={16} />
                                         </button>
-                                        <button onClick={() => handleDelete(f.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }}
+                                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        >
                                             <Trash2 size={16} />
                                         </button>
                                     </td>

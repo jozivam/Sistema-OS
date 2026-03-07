@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Filter, Edit, Trash2, Camera, Package, Truck, BarChart3, Tag, Image as ImageIcon, CheckCircle2, AlertCircle, Warehouse, Box, Scale, DollarSign, Globe, Ruler, AlertTriangle, Info } from 'lucide-react';
+import { Plus, Search, Filter, Edit, Trash2, Camera, Package, Truck, BarChart3, Tag, Image as ImageIcon, CheckCircle2, AlertCircle, Warehouse, Box, Scale, DollarSign, Globe, Ruler, AlertTriangle, Info, ChevronDown } from 'lucide-react';
 import { dbService } from '../services/dbService';
 import { authService } from '../services/authService';
 import { Product, Supplier, StorageLocation } from '../types';
@@ -17,7 +17,16 @@ export default function EstoqueProdutos() {
     const [isEditing, setIsEditing] = useState<string | null>(null);
     const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
 
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+    const [isDeleting, setIsDeletingProduct] = useState(false);
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
+
+    // Controle de Menus Dropdown (Combobox)
+    const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
+    const [isBrandDropdownOpen, setIsBrandDropdownOpen] = useState(false);
+    const catDropdownRef = useRef<HTMLDivElement>(null);
+    const brandDropdownRef = useRef<HTMLDivElement>(null);
 
     const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'error') => {
         setToast({ message, type });
@@ -63,7 +72,7 @@ export default function EstoqueProdutos() {
     const [entryForm, setEntryForm] = useState({
         fornecedorId: '',
         documentRef: '',
-        destinoId: '',
+        tipo: 'ENTRADA' as 'ENTRADA' | 'SAIDA',
         quantidade: 1,
         barcodes: [] as string[]
     });
@@ -97,12 +106,16 @@ export default function EstoqueProdutos() {
             setSuppliers(sData);
             setStorageLocations(locData);
 
-            if (locData.length > 0 && !entryForm.destinoId) {
-                setEntryForm(prev => ({ ...prev, destinoId: locData[0].id }));
-            }
+            // Só mostra sugestões padrão se o banco estiver vazio para essas colunas
+            const dbCats = pData.map(p => p.categoria?.trim()).filter(Boolean);
+            const dbBrands = pData.map(p => p.marca?.trim()).filter(Boolean);
 
-            const cats = Array.from(new Set(pData.map(p => p.categoria).filter(Boolean)));
-            const brands = Array.from(new Set(pData.map(p => p.marca).filter(Boolean)));
+            const defaultCats = dbCats.length === 0 ? ['Equipamentos', 'Peças', 'Acessórios', 'Infraestrutura', 'Ferramentas', 'Mão de Obra'] : [];
+            const defaultBrands = dbBrands.length === 0 ? ['Própria', 'Genérica', 'S/M (Sem Marca)'] : [];
+
+            const cats = Array.from(new Set([...defaultCats, ...dbCats])).sort();
+            const brands = Array.from(new Set([...defaultBrands, ...dbBrands])).sort();
+
             setAvailableCategories(cats as string[]);
             setAvailableBrands(brands as string[]);
         } catch (error) {
@@ -112,15 +125,76 @@ export default function EstoqueProdutos() {
         }
     };
 
-    // Lógica Financeira
+    // Fechar dropdowns ao clicar fora
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (catDropdownRef.current && !catDropdownRef.current.contains(e.target as Node)) setIsCatDropdownOpen(false);
+            if (brandDropdownRef.current && !brandDropdownRef.current.contains(e.target as Node)) setIsBrandDropdownOpen(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Lógica Financeira (Suporte a vírgula BR)
     const calculateSellingPrice = (buy: number, margin: number) => buy * (1 + margin / 100);
-    const handleBuyPriceChange = (value: number) => {
+
+    const parseCurrency = (val: string): number => {
+        // Remove pontos de milhar e troca vírgula por ponto
+        const clean = val.replace(/\./g, '').replace(',', '.');
+        return parseFloat(clean) || 0;
+    };
+
+    const formatCurrency = (val: number): string => {
+        if (!val && val !== 0) return '';
+        return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    // Ações de Limpeza de Autocomplete
+    const handleDeleteCategory = async (e: React.MouseEvent, cat: string) => {
+        e.stopPropagation();
+        if (window.confirm(`Isso removerá a categoria "${cat}" de TODOS os produtos cadastrados. Deseja continuar?`)) {
+            try {
+                await dbService.removeCategory(cat, companyId!);
+                showToast(`Categoria "${cat}" removida do catálogo.`, 'success');
+                loadData();
+            } catch (error) {
+                showToast('Erro ao limpar categoria.', 'error');
+            }
+        }
+    };
+
+    const handleDeleteBrand = async (e: React.MouseEvent, brand: string) => {
+        e.stopPropagation();
+        if (window.confirm(`Isso removerá a marca "${brand}" de TODOS os produtos cadastrados. Deseja continuar?`)) {
+            try {
+                await dbService.removeBrand(brand, companyId!);
+                showToast(`Marca "${brand}" removida do catálogo.`, 'success');
+                loadData();
+            } catch (error) {
+                showToast('Erro ao limpar marca.', 'error');
+            }
+        }
+    };
+
+    const handleBuyPriceChange = (valStr: string) => {
+        // Pega apenas os dígitos numéricos
+        const digits = valStr.replace(/\D/g, '');
+        // Converte para decimal (dividindo por 100 para ter as duas casas de centavos)
+        const value = Number(digits) / 100;
+
         const newPrice = calculateSellingPrice(value, formData.margemLucro);
         setFormData({ ...formData, valorCompra: value, precoVenda: Number(newPrice.toFixed(2)) });
     };
+
     const handleMarginChange = (value: number) => {
         const newPrice = calculateSellingPrice(formData.valorCompra, value);
         setFormData({ ...formData, margemLucro: value, precoVenda: Number(newPrice.toFixed(2)) });
+    };
+
+    const handleSalesPriceChange = (valStr: string) => {
+        const digits = valStr.replace(/\D/g, '');
+        const value = Number(digits) / 100;
+        setFormData({ ...formData, precoVenda: value });
     };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,12 +205,14 @@ export default function EstoqueProdutos() {
             const fileExt = file.name.split('.').pop();
             const fileName = `${Math.random()}.${fileExt}`;
             const filePath = `${companyId}/${fileName}`;
-            const { error: uploadError } = await supabase.storage.from('product-images').upload(filePath, file);
+            const { error: uploadError } = await supabase.storage.from('Sistema de OS').upload(filePath, file);
             if (uploadError) throw uploadError;
-            const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(filePath);
-            setFormData(p => ({ ...p, imagens: [...p.imagens, publicUrl] }));
-        } catch (error) {
-            showToast('Falha ao enviar imagem.', 'error');
+            const { data: { publicUrl } } = supabase.storage.from('Sistema de OS').getPublicUrl(filePath);
+            // Adiciona timestamp para evitar cache e forçar renderização
+            const uniqueUrl = `${publicUrl}?t=${Date.now()}`;
+            setFormData(p => ({ ...p, imagens: [...p.imagens, uniqueUrl] }));
+        } catch (error: any) {
+            showToast(`Falha ao enviar imagem: ${error.message || 'Erro desconhecido'}`, 'error');
         } finally {
             setUploading(false);
         }
@@ -163,28 +239,49 @@ export default function EstoqueProdutos() {
                 await dbService.updateProduct(isEditing, formData);
                 setIsModalOpen(false);
                 setFormData(initialForm);
-                setIsEditing(null);
                 loadData();
+
+                // Prepara modal de entrada com quantidade 0
+                setCreatedProduct({ id: isEditing, ...formData } as any);
+                setEntryForm(prev => ({ ...prev, quantidade: 0, barcodes: [''] }));
+                setIsEntryModalOpen(true);
+                setIsEditing(null);
+                showToast('Alterações salvas!', 'success');
             } else {
                 const newProd = await dbService.createProduct({ ...formData, companyId: companyId! });
-                setCreatedProduct(newProd);
                 setIsModalOpen(false);
                 setFormData(initialForm);
-                setEntryForm(prev => ({ ...prev, quantidade: 1, barcodes: [''] }));
+                loadData();
+
+                // Prepara modal de entrada com quantidade 0
+                setCreatedProduct(newProd);
+                setEntryForm(prev => ({ ...prev, quantidade: 0, barcodes: [''] }));
                 setIsEntryModalOpen(true);
+                showToast('Produto cadastrado!', 'success');
             }
-        } catch (error) {
-            showToast("Erro ao salvar produto.", "error");
+        } catch (error: any) {
+            console.error("Erro ao salvar produto:", error);
+            showToast(`Erro ao salvar produto: ${error.message || 'Erro desconhecido'}`, "error");
         }
     };
 
     const handleEntrySubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!createdProduct || !companyId) return;
-        if (!entryForm.destinoId) {
-            showToast("Selecione um depósito de destino.", "error");
+
+        // Se a quantidade for 0 ou negativa, apenas fecha o modal sem registrar movimentação
+        if (Number(entryForm.quantidade) <= 0) {
+            setIsEntryModalOpen(false);
+            setEntryForm({
+                quantidade: 0,
+                tipo: 'ENTRADA',
+                fornecedorId: '',
+                documentRef: '',
+                barcodes: ['']
+            });
             return;
         }
+
         try {
             setIsSubmittingEntry(true);
             const user = await authService.getCurrentUser();
@@ -196,9 +293,8 @@ export default function EstoqueProdutos() {
             await dbService.createStockMovement({
                 companyId,
                 produtoId: createdProduct.id,
-                tipo: 'ENTRADA',
+                tipo: entryForm.tipo,
                 quantidade: entryForm.quantidade,
-                destinoId: entryForm.destinoId,
                 fornecedorId: entryForm.fornecedorId || null,
                 documentRef: entryForm.documentRef || '',
                 userId: user?.id,
@@ -218,7 +314,7 @@ export default function EstoqueProdutos() {
 
             setIsEntryModalOpen(false);
             setCreatedProduct(null);
-            setEntryForm({ fornecedorId: '', documentRef: '', destinoId: storageLocations[0]?.id || '', quantidade: 1, barcodes: [] });
+            setEntryForm({ fornecedorId: '', documentRef: '', tipo: 'ENTRADA', quantidade: 1, barcodes: [] });
             loadData();
             showToast("Produto e Estoque inicial registrados com sucesso!", "success");
         } catch (error) {
@@ -226,6 +322,32 @@ export default function EstoqueProdutos() {
             showToast("Erro ao registrar entrada.", "error");
         } finally {
             setIsSubmittingEntry(false);
+        }
+    };
+
+    const handleDeleteClick = (p: Product) => {
+        setProductToDelete(p);
+        setIsDeleteModalOpen(true);
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (!productToDelete) return;
+        try {
+            setIsDeletingProduct(true);
+            await dbService.deleteProduct(productToDelete.id);
+            showToast('Produto removido com sucesso!', 'success');
+            setIsDeleteModalOpen(false);
+            setProductToDelete(null);
+            loadData();
+        } catch (error: any) {
+            console.error("Erro ao deletar produto:", error);
+            if (error.code === '23503') {
+                showToast("Não é possível excluir: este produto possui histórico de movimentações. Tente desativá-lo para ocultar do catálogo.", "error");
+            } else {
+                showToast(`Erro ao remover produto: ${error.message || 'Erro desconhecido'}`, "error");
+            }
+        } finally {
+            setIsDeletingProduct(false);
         }
     };
 
@@ -275,7 +397,15 @@ export default function EstoqueProdutos() {
                     </p>
                 </div>
                 <button
-                    onClick={() => { setFormData(initialForm); setIsEditing(null); setIsModalOpen(true); }}
+                    onClick={async () => {
+                        setFormData(initialForm);
+                        setIsEditing(null);
+                        setIsModalOpen(true);
+                        if (companyId) {
+                            const next = await dbService.getNextSku(companyId);
+                            setFormData(prev => ({ ...prev, sku: next }));
+                        }
+                    }}
                     className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-black text-sm shadow-lg shadow-blue-200"
                 >
                     <Plus size={20} /> NOVO PRODUTO
@@ -285,13 +415,13 @@ export default function EstoqueProdutos() {
             {/* Stats Bar */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {[
-                    { label: 'Total Itens', value: products.length, icon: Package, color: 'blue' },
-                    { label: 'Em Estoque', value: products.reduce((acc, p) => acc + (p.quantidadeEstoque || 0), 0), icon: BarChart3, color: 'emerald' },
-                    { label: 'Categorias', value: new Set(products.map(p => p.categoria)).size, icon: Tag, color: 'amber' },
-                    { label: 'Valor Total', value: `R$ ${products.reduce((acc, p) => acc + ((p.quantidadeEstoque || 0) * (p.valorCompra || 0)), 0).toLocaleString()}`, icon: DollarSign, color: 'indigo' }
+                    { label: 'Total Itens', value: products.length, icon: Package, bgColor: 'bg-blue-50', textColor: 'text-blue-600' },
+                    { label: 'Em Estoque', value: products.reduce((acc, p) => acc + (p.quantidadeEstoque || 0), 0), icon: BarChart3, bgColor: 'bg-emerald-50', textColor: 'text-emerald-600' },
+                    { label: 'Categorias', value: new Set(products.map(p => p.categoria)).size, icon: Tag, bgColor: 'bg-amber-50', textColor: 'text-amber-600' },
+                    { label: 'Valor Total', value: `R$ ${products.reduce((acc, p) => acc + ((p.quantidadeEstoque || 0) * (p.valorCompra || 0)), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, bgColor: 'bg-indigo-50', textColor: 'text-indigo-600' }
                 ].map((stat, i) => (
-                    <div key={i} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl bg-${stat.color}-50 text-${stat.color}-600 flex items-center justify-center`}>
+                    <div key={i} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-md">
+                        <div className={`w-12 h-12 rounded-2xl ${stat.bgColor} ${stat.textColor} flex items-center justify-center`}>
                             <stat.icon size={24} />
                         </div>
                         <div>
@@ -353,7 +483,7 @@ export default function EstoqueProdutos() {
                                     </td>
                                     <td className="px-8 py-6">
                                         <div className="text-sm font-black text-slate-900">R$ {p.precoVenda.toFixed(2)}</div>
-                                        <div className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">Custo: R$ {p.valorCompra?.toFixed(2)}</div>
+                                        <div className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest whitespace-nowrap">Custo: R$ {p.valorCompra?.toFixed(2)}</div>
                                     </td>
                                     <td className="px-8 py-6 text-center">
                                         <div className={`text-lg font-black ${p.quantidadeEstoque < 5 ? 'text-rose-600' : 'text-slate-900'}`}>
@@ -367,9 +497,24 @@ export default function EstoqueProdutos() {
                                         </span>
                                     </td>
                                     <td className="px-8 py-6 text-right">
-                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => handleEdit(p)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 rounded-2xl transition-all shadow-sm"><Edit size={18} /></button>
-                                            <button onClick={async () => { if (confirm("Excluir produto?")) { await dbService.deleteProduct(p.id); loadData(); } }} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 rounded-2xl transition-all shadow-sm"><Trash2 size={18} /></button>
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setCreatedProduct(p);
+                                                    setEntryForm(prev => ({ ...prev, quantidade: 0, tipo: 'ENTRADA' }));
+                                                    setIsEntryModalOpen(true);
+                                                }}
+                                                title="Movimentar Estoque"
+                                                className="w-10 h-10 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm"
+                                            >
+                                                <Truck size={18} />
+                                            </button>
+                                            <button onClick={() => handleEdit(p)} className="w-10 h-10 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm">
+                                                <Edit size={18} />
+                                            </button>
+                                            <button onClick={() => handleDeleteClick(p)} className="w-10 h-10 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm font-black">
+                                                <Trash2 size={18} />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -469,21 +614,33 @@ export default function EstoqueProdutos() {
                                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Custo Unitário (R$)</label>
                                         <div className="relative">
                                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500 font-black text-xs">$</span>
-                                            <input type="number" step="0.01" value={formData.valorCompra} onChange={e => handleBuyPriceChange(Number(e.target.value))} className="w-full pl-8 pr-5 py-4 bg-emerald-50/20 border-2 border-emerald-100/30 rounded-2xl outline-none focus:border-emerald-500 font-black text-sm transition-all" />
+                                            <input
+                                                type="text"
+                                                value={formatCurrency(formData.valorCompra)}
+                                                onChange={e => handleBuyPriceChange(e.target.value)}
+                                                className="w-full pl-8 pr-5 py-4 bg-emerald-50/20 border-2 border-emerald-100/30 rounded-2xl outline-none focus:border-emerald-500 font-black text-sm transition-all"
+                                                placeholder="0,00"
+                                            />
                                         </div>
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Margem de Lucro (%)</label>
                                         <div className="relative">
                                             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-500 font-black text-xs">%</span>
-                                            <input type="number" step="0.1" value={formData.margemLucro} onChange={e => handleMarginChange(Number(e.target.value))} className="w-full px-5 py-4 bg-orange-50/20 border-2 border-orange-100/30 rounded-2xl outline-none focus:border-orange-500 font-black text-sm transition-all" />
+                                            <input type="number" step="0.1" value={formData.margemLucro || ''} onChange={e => handleMarginChange(Number(e.target.value))} className="w-full px-5 py-4 bg-orange-50/20 border-2 border-orange-100/30 rounded-2xl outline-none focus:border-orange-500 font-black text-sm transition-all" />
                                         </div>
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Preço Final de Venda (R$)</label>
                                         <div className="relative">
                                             <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-white/50" size={20} />
-                                            <input type="number" step="0.01" value={formData.precoVenda} onChange={e => setFormData({ ...formData, precoVenda: Number(e.target.value) })} className="w-full pl-14 pr-6 py-4 bg-slate-900 text-white border-none rounded-2xl outline-none shadow-xl shadow-slate-200 font-black text-xl" />
+                                            <input
+                                                type="text"
+                                                value={formatCurrency(formData.precoVenda)}
+                                                onChange={e => handleSalesPriceChange(e.target.value)}
+                                                className="w-full pl-14 pr-6 py-4 bg-slate-900 text-white border-none rounded-2xl outline-none shadow-xl shadow-slate-200 font-black text-xl"
+                                                placeholder="0,00"
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -498,7 +655,7 @@ export default function EstoqueProdutos() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">SKU / Cód. Interno</label>
-                                        <input type="text" value={formData.sku} onChange={e => setFormData({ ...formData, sku: e.target.value })} className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold text-xs uppercase" placeholder="EX: ROT-001" />
+                                        <input type="text" value={formData.sku} onChange={e => setFormData({ ...formData, sku: e.target.value })} className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold text-xs uppercase" placeholder="GERANDO..." readOnly={!isEditing} />
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">EAN / Barcode</label>
@@ -528,7 +685,7 @@ export default function EstoqueProdutos() {
                                     ].map((dim, i) => (
                                         <div key={i}>
                                             <label className="block text-[8px] font-black text-slate-400 uppercase mb-1 tracking-widest text-center">{dim.label}</label>
-                                            <input type="number" step="0.01" value={(formData as any)[dim.key]} onChange={e => setFormData({ ...formData, [dim.key]: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-center font-bold text-xs" />
+                                            <input type="number" step="0.01" value={(formData as any)[dim.key] || ''} onChange={e => setFormData({ ...formData, [dim.key]: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-center font-bold text-xs" />
                                         </div>
                                     ))}
                                 </div>
@@ -539,15 +696,119 @@ export default function EstoqueProdutos() {
                                 <h4 className="text-[11px] font-black text-orange-500 uppercase tracking-[0.2em] border-l-4 border-orange-500 pl-4">IV. Organização e Presença Digital</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Categoria do Item</label>
-                                        <input type="text" list="cats-list" value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value })} className="w-full px-6 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-400 transition-all" placeholder="Digitie ou escolha..." />
-                                        <datalist id="cats-list">{availableCategories.map(c => <option key={c} value={c} />)}</datalist>
+                                    <div className="space-y-2 relative" ref={catDropdownRef}>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria do Item</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={formData.categoria}
+                                                onChange={e => {
+                                                    setFormData({ ...formData, categoria: e.target.value });
+                                                    setIsCatDropdownOpen(true);
+                                                }}
+                                                onFocus={() => setIsCatDropdownOpen(true)}
+                                                className="w-full px-6 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-400 focus:bg-white transition-all"
+                                                placeholder="DIGITE OU SELECIONE..."
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsCatDropdownOpen(!isCatDropdownOpen)}
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-orange-500"
+                                            >
+                                                <ChevronDown size={20} className={`transition-transform ${isCatDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+                                        </div>
+
+                                        {isCatDropdownOpen && (
+                                            <div className="absolute z-[100] w-full mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+                                                {availableCategories
+                                                    .filter(c => c.toLowerCase().includes((formData.categoria || '').toLowerCase()))
+                                                    .map(cat => (
+                                                        <div
+                                                            key={cat}
+                                                            className="group px-6 py-3 hover:bg-orange-50 cursor-pointer flex items-center justify-between transition-colors"
+                                                            onClick={() => {
+                                                                setFormData({ ...formData, categoria: cat });
+                                                                setIsCatDropdownOpen(false);
+                                                            }}
+                                                        >
+                                                            <span className="font-bold text-sm text-slate-600">{cat}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleDeleteCategory(e, cat)}
+                                                                className="p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                                title="Remover esta categoria do sistema"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                }
+                                                {formData.categoria && !availableCategories.includes(formData.categoria) && (
+                                                    <div className="px-6 py-3 text-[10px] font-black text-orange-500 uppercase tracking-widest bg-orange-50/50">
+                                                        Nova Categoria: "{formData.categoria}"
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Marca {isBrandRequired && '*'}</label>
-                                        <input required={isBrandRequired} type="text" list="brands-list" value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} className={`w-full px-6 py-3.5 bg-slate-50 border-2 rounded-2xl font-bold text-sm outline-none transition-all ${isBrandRequired && !formData.marca ? 'border-amber-400' : 'border-slate-100 focus:border-orange-400'}`} placeholder="Ex: HP, Intel, Cisco..." />
-                                        <datalist id="brands-list">{availableBrands.map(b => <option key={b} value={b} />)}</datalist>
+
+                                    <div className="space-y-2 relative" ref={brandDropdownRef}>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Marca {isBrandRequired && '*'}</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={formData.marca}
+                                                onChange={e => {
+                                                    setFormData({ ...formData, marca: e.target.value });
+                                                    setIsBrandDropdownOpen(true);
+                                                }}
+                                                onFocus={() => setIsBrandDropdownOpen(true)}
+                                                className="w-full px-6 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-400 focus:bg-white transition-all"
+                                                placeholder="DIGITE OU SELECIONE..."
+                                                required={isBrandRequired}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsBrandDropdownOpen(!isBrandDropdownOpen)}
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-orange-500"
+                                            >
+                                                <ChevronDown size={20} className={`transition-transform ${isBrandDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+                                        </div>
+
+                                        {isBrandDropdownOpen && (
+                                            <div className="absolute z-[100] w-full mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+                                                {availableBrands
+                                                    .filter(b => b.toLowerCase().includes((formData.marca || '').toLowerCase()))
+                                                    .map(brand => (
+                                                        <div
+                                                            key={brand}
+                                                            className="group px-6 py-3 hover:bg-orange-50 cursor-pointer flex items-center justify-between transition-colors"
+                                                            onClick={() => {
+                                                                setFormData({ ...formData, marca: brand });
+                                                                setIsBrandDropdownOpen(false);
+                                                            }}
+                                                        >
+                                                            <span className="font-bold text-sm text-slate-600">{brand}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleDeleteBrand(e, brand)}
+                                                                className="p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                                title="Remover esta marca do sistema"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                }
+                                                {formData.marca && !availableBrands.includes(formData.marca) && (
+                                                    <div className="px-6 py-3 text-[10px] font-black text-orange-500 uppercase tracking-widest bg-orange-50/50">
+                                                        Nova Marca: "{formData.marca}"
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100">
                                         <div>
@@ -591,7 +852,12 @@ export default function EstoqueProdutos() {
                                     <Truck size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Entrada de Estoque</h3>
+                                    <div className="flex items-center gap-3">
+                                        <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Movimentar Estoque</h3>
+                                        <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                            Saldo Mestre: {createdProduct.quantidadeEstoque} {createdProduct.unidadeMedida || 'UN'}
+                                        </div>
+                                    </div>
                                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mt-1 italic">{createdProduct.nome}</p>
                                 </div>
                             </div>
@@ -604,11 +870,28 @@ export default function EstoqueProdutos() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-6">
-                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-l-4 border-slate-300 pl-3">I. Origem & Documento</h4>
+                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-l-4 border-slate-300 pl-3">I. Tipo & Documento</h4>
+
+                                    <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEntryForm({ ...entryForm, tipo: 'ENTRADA' })}
+                                            className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${entryForm.tipo === 'ENTRADA' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Entrada (+)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEntryForm({ ...entryForm, tipo: 'SAIDA' })}
+                                            className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${entryForm.tipo === 'SAIDA' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Saída (-)
+                                        </button>
+                                    </div>
 
                                     <SearchableSelect
-                                        label="Fornecedor da Carga"
-                                        placeholder="Buscar fornecedor..."
+                                        label="Fornecedor da Carga (Opcional)"
+                                        placeholder="Selecione ou deixe em branco..."
                                         value={entryForm.fornecedorId}
                                         onChange={val => setEntryForm({ ...entryForm, fornecedorId: val })}
                                         options={suppliers.map(s => ({ id: s.id, label: s.name, subLabel: s.document || '' }))}
@@ -625,20 +908,13 @@ export default function EstoqueProdutos() {
                                         />
                                     </div>
 
-                                    <SearchableSelect
-                                        label="Depósito / Local de Destino *"
-                                        placeholder="Onde será armazenado?"
-                                        value={entryForm.destinoId}
-                                        onChange={val => setEntryForm({ ...entryForm, destinoId: val })}
-                                        options={storageLocations.map(l => ({ id: l.id, label: l.nome }))}
-                                    />
 
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Quantidade Recebida *</label>
                                         <input
                                             required
                                             type="number"
-                                            min="1"
+                                            min="0"
                                             step={createdProduct.unidadeMedida === 'UN' ? '1' : '0.01'}
                                             value={entryForm.quantidade}
                                             onChange={e => {
@@ -702,7 +978,7 @@ export default function EstoqueProdutos() {
                         </form>
 
                         <div className="p-8 bg-slate-50 border-t-2 border-slate-100 flex items-center justify-between">
-                            <button type="button" onClick={() => !isSubmittingEntry && setIsEntryModalOpen(false)} className="px-8 py-4 font-black text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest text-xs">Pular Carga Inicial</button>
+                            <button type="button" onClick={() => { setIsEntryModalOpen(false); loadData(); }} className="px-8 py-4 font-black text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest text-xs">Pular Carga Inicial</button>
                             <button onClick={handleEntrySubmit} disabled={isSubmittingEntry} className="px-10 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all font-black text-sm shadow-xl shadow-emerald-500/20 uppercase tracking-[0.2em] flex items-center gap-2">
                                 {isSubmittingEntry ? 'Registrando...' : 'Registrar Movimentação'}
                             </button>
@@ -710,15 +986,61 @@ export default function EstoqueProdutos() {
                     </div>
                 </div>
             )}
-            {/* Toast e Dialog */}
+            {/* Modal de Confirmação de Exclusão PREMIUM */}
+            {isDeleteModalOpen && productToDelete && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => !isDeleting && setIsDeleteModalOpen(false)} />
+                    <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300 border border-slate-200 p-8 text-center space-y-6">
+                        <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center text-rose-500 mx-auto animate-bounce-subtle">
+                            <AlertTriangle size={42} />
+                        </div>
+
+                        <div className="space-y-2">
+                            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Confirmar Exclusão</h3>
+                            <p className="text-sm font-bold text-slate-500">
+                                Você tem certeza que deseja remover o produto <br />
+                                <span className="text-rose-600 font-black">"{productToDelete.nome}"</span>?<br />
+                                Esta ação não pode ser desfeita.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-3 pt-4">
+                            <button
+                                disabled={isDeleting}
+                                onClick={handleDeleteConfirm}
+                                className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                        Excluindo...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 size={18} />
+                                        Sim, Excluir Produto
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                disabled={isDeleting}
+                                onClick={() => setIsDeleteModalOpen(false)}
+                                className="w-full py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                            >
+                                Cancelar e Manter
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toast System */}
             {toast && (
-                <div className={`fixed top-6 right-6 z-[999] px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl flex items-center gap-3 border ${toast.type === 'success' ? 'bg-slate-900 text-white border-emerald-500' :
-                        toast.type === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-500' :
-                            'bg-rose-600 text-white border-rose-400'
+                <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[500] px-8 py-4 rounded-[2rem] shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom duration-500 font-black text-xs uppercase tracking-widest ${toast.type === 'success' ? 'bg-slate-900 text-emerald-400 border-b-4 border-emerald-500' :
+                    toast.type === 'warning' ? 'bg-slate-900 text-amber-400 border-b-4 border-amber-500' :
+                        'bg-slate-900 text-rose-400 border-b-4 border-rose-500'
                     }`}>
-                    {toast.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500" />}
-                    {toast.type === 'warning' && <AlertTriangle size={16} className="text-amber-500" />}
-                    {toast.type === 'error' && <AlertTriangle size={16} className="text-white" />}
+                    {toast.type === 'success' ? <CheckCircle2 size={18} /> : toast.type === 'warning' ? <AlertCircle size={18} /> : <AlertTriangle size={18} />}
                     {toast.message}
                 </div>
             )}

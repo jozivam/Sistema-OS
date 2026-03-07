@@ -456,6 +456,24 @@ export const dbService: IDatabaseService = {
         if (error) return null;
         return mapProduct(data);
     },
+    async getNextSku(companyId: string): Promise<string> {
+        const { data, error } = await supabase
+            .from('products')
+            .select('sku')
+            .eq('company_id', companyId);
+
+        if (error) return '01';
+
+        const skus = (data || [])
+            .map(p => parseInt(p.sku))
+            .filter(n => !isNaN(n));
+
+        if (skus.length === 0) return '01';
+
+        const maxSku = Math.max(...skus);
+        const nextSku = maxSku + 1;
+        return nextSku.toString().padStart(2, '0');
+    },
     async createProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
         const payload = {
             company_id: product.companyId,
@@ -474,7 +492,7 @@ export const dbService: IDatabaseService = {
             variacoes: product.variacoes,
             categoria: product.categoria,
             marca: product.marca,
-            unidade_medida: product.unidadeMedida,
+            // unidade_medida: product.unidadeMedida, // Campo não existe na tabela products
             seo_title: product.seoTitle,
             seo_description: product.seoDescription,
             valor_compra: Number(product.valorCompra || 0),
@@ -496,7 +514,9 @@ export const dbService: IDatabaseService = {
             ncm: product.ncm,
             categoria: product.categoria,
             marca: product.marca,
-            unidade_medida: product.unidadeMedida,
+            // unidade_medida: product.unidadeMedida, // Campo não existe na tabela products
+            seo_title: product.seoTitle,
+            seo_description: product.seoDescription,
             preco_venda: product.precoVenda !== undefined ? Number(product.precoVenda) : undefined,
             valor_compra: product.valorCompra !== undefined ? Number(product.valorCompra) : undefined,
             margem_lucro: product.margemLucro !== undefined ? Number(product.margemLucro) : undefined,
@@ -514,7 +534,38 @@ export const dbService: IDatabaseService = {
         if (error) throw error;
     },
     async deleteProduct(id: string): Promise<void> {
+        // Limpeza profunda de dependências para permitir excluir produtos com histórico de estoque básico
+        try {
+            // Remove movimentações
+            await supabase.from('stock_movements').delete().eq('produto_id', id);
+
+            // Tenta remover de níveis de estoque (se a tabela existir)
+            await supabase.from('inventory_levels').delete().eq('produto_id', id);
+
+            // Se houver outras tabelas de histórico simples, adicionar aqui
+        } catch (e) {
+            console.warn("Aviso na limpeza de dependências:", e);
+        }
+
         const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    async removeCategory(category: string, companyId: string): Promise<void> {
+        const { error } = await supabase
+            .from('products')
+            .update({ categoria: null })
+            .eq('company_id', companyId)
+            .eq('categoria', category);
+        if (error) throw error;
+    },
+
+    async removeBrand(brand: string, companyId: string): Promise<void> {
+        const { error } = await supabase
+            .from('products')
+            .update({ marca: null })
+            .eq('company_id', companyId)
+            .eq('marca', brand);
         if (error) throw error;
     },
 
@@ -628,6 +679,26 @@ export const dbService: IDatabaseService = {
             }
         });
         return balances;
+    },
+
+    async getLatestDeliveryDates(companyId: string, locationId: string): Promise<Record<string, string>> {
+        const { data, error } = await supabase
+            .from('stock_movements')
+            .select('produto_id, created_at')
+            .eq('company_id', companyId)
+            .eq('destino_id', locationId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const dates: Record<string, string> = {};
+        (data || []).forEach(m => {
+            const pid = m.produto_id;
+            if (!dates[pid]) {
+                dates[pid] = m.created_at;
+            }
+        });
+        return dates;
     },
 
     // Vendas / PDV

@@ -40,19 +40,38 @@ CREATE POLICY "Multi-tenant access venda_itens" ON public.venda_itens
 -- 3. Trigger para Atualizar quantidade_estoque em products
 CREATE OR REPLACE FUNCTION public.handle_stock_update()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_origem_nome TEXT;
+    v_destino_nome TEXT;
 BEGIN
-    -- Se for ENTRADA (sem origem, apenas destino) ou Destino de TRANSFERENCIA
-    IF (NEW.tipo = 'ENTRADA') OR (NEW.destino_id IS NOT NULL) THEN
-        UPDATE public.products 
-        SET quantidade_estoque = quantidade_estoque + NEW.quantidade
-        WHERE id = NEW.produto_id;
+    -- Busca nomes para identificar se é Matriz/Sede
+    IF NEW.origem_id IS NOT NULL THEN
+        SELECT nome INTO v_origem_nome FROM public.storage_locations WHERE id = NEW.origem_id;
+    END IF;
+    IF NEW.destino_id IS NOT NULL THEN
+        SELECT nome INTO v_destino_nome FROM public.storage_locations WHERE id = NEW.destino_id;
     END IF;
 
-    -- Se for SAIDA (apenas origem, sem destino) ou Origem de TRANSFERENCIA
-    IF (NEW.tipo = 'SAIDA') OR (NEW.origem_id IS NOT NULL) THEN
-        UPDATE public.products 
-        SET quantidade_estoque = quantidade_estoque - NEW.quantidade
-        WHERE id = NEW.produto_id;
+    -- LÓGICA: O estoque_quantidade em products representará o ESTOQUE FINANCEIRO (Matriz)
+    
+    -- Se for entrada direta ou transferência vindo de fora para Matriz
+    IF (NEW.tipo = 'ENTRADA') OR (v_destino_nome ILIKE '%Matriz%' OR v_destino_nome ILIKE '%Sede%') THEN
+        -- Mas se for transferência INTERNA Matriz -> Matriz, não muda nada
+        IF NOT (v_origem_nome ILIKE '%Matriz%' OR v_origem_nome ILIKE '%Sede%') OR (NEW.tipo = 'ENTRADA') THEN
+            UPDATE public.products 
+            SET quantidade_estoque = quantidade_estoque + NEW.quantidade
+            WHERE id = NEW.produto_id;
+        END IF;
+    END IF;
+
+    -- Se for saída direta ou transferência saindo da Matriz para outro lugar (e.g. Técnico)
+    IF (NEW.tipo = 'SAIDA') OR (v_origem_nome ILIKE '%Matriz%' OR v_origem_nome ILIKE '%Sede%') THEN
+        -- Mas se for transferência INTERNA Matriz -> Matriz, não muda nada
+        IF NOT (v_destino_nome ILIKE '%Matriz%' OR v_destino_nome ILIKE '%Sede%') OR (NEW.tipo = 'SAIDA') THEN
+            UPDATE public.products 
+            SET quantidade_estoque = quantidade_estoque - NEW.quantidade
+            WHERE id = NEW.produto_id;
+        END IF;
     END IF;
 
     RETURN NEW;
