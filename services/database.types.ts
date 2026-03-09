@@ -25,6 +25,8 @@ export interface IDatabaseService {
     createCustomer(customer: any): Promise<Customer>;
     updateCustomer(id: string, customer: Partial<Customer>): Promise<void>;
     deleteCustomer(id: string): Promise<void>;
+    updateCustomerCredit(id: string, newBalance: number): Promise<void>;
+
 
     // Fornecedores
     getSuppliers(companyId?: string): Promise<Supplier[]>;
@@ -107,6 +109,18 @@ export interface IDatabaseService {
     upsertOrders(orders: ServiceOrder[]): Promise<void>;
     upsertMessages(messages: ChatMessage[]): Promise<void>;
     upsertPayments(payments: CompanyPayment[]): Promise<void>;
+
+    // Financeiro
+    getFinanceAccounts(companyId: string): Promise<any[]>;
+    createFinanceAccount(account: any): Promise<any>;
+    updateFinanceAccount(id: string, account: any): Promise<void>;
+
+    getFinanceCategories(companyId: string, type?: 'INCOME' | 'EXPENSE'): Promise<any[]>;
+    createFinanceCategory(category: any): Promise<any>;
+
+    getFinanceTransactions(companyId: string, filters?: any): Promise<any[]>;
+    createFinanceTransaction(transaction: any): Promise<any>;
+    updateFinanceTransaction(id: string, transaction: any): Promise<void>;
 
     // Acesso direto ao cliente (para Realtime ou transições)
     supabase: any;

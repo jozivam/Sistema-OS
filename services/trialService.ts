@@ -10,6 +10,8 @@ const TRIAL_SESSION_KEY = 'trial_session';
 const TRIAL_ROLE_KEY = 'trial_current_role';
 const TRIAL_CUSTOMERS_KEY = 'trial_customers';
 const TRIAL_ORDERS_KEY = 'trial_orders';
+const TRIAL_ACCOUNTS_KEY = 'trial_accounts';
+const TRIAL_FINANCE_TRANS_KEY = 'trial_finance_transactions';
 
 export const TRIAL_COMPANY_ID = 'trial-company';
 export const TRIAL_ADMIN_ID = 'trial-admin';
@@ -301,6 +303,17 @@ export function startTrial(userName: string, companyName: string): User {
     sessionStorage.setItem(TRIAL_CUSTOMERS_KEY, JSON.stringify(customers));
     sessionStorage.setItem(TRIAL_ORDERS_KEY, JSON.stringify(orders));
 
+    // Inicializar Financeiro Trial
+    const accounts = [
+        { id: 'trial-acc-1', company_id: TRIAL_COMPANY_ID, name: 'Caixa Loja', type: 'CASH', current_balance: 1500.00, active: true },
+        { id: 'trial-acc-2', company_id: TRIAL_COMPANY_ID, name: 'Banco Itaú', type: 'BANK', current_balance: 25700.50, active: true }
+    ];
+    const transactions = [
+        { id: 'trial-tr-1', company_id: TRIAL_COMPANY_ID, description: 'Venda Demonstração', amount: 350.00, type: 'INCOME', status: 'PAID', due_date: new Date().toISOString(), account_id: 'trial-acc-1', category_id: 'trial-cat-vendas' }
+    ];
+    sessionStorage.setItem(TRIAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+    sessionStorage.setItem(TRIAL_FINANCE_TRANS_KEY, JSON.stringify(transactions));
+
     return admin;
 }
 
@@ -383,9 +396,29 @@ export function saveTrialCustomers(customers: Customer[]): void {
 }
 
 export function cleanupTrial(): void {
-    [TRIAL_SESSION_KEY, TRIAL_ROLE_KEY, TRIAL_CUSTOMERS_KEY, TRIAL_ORDERS_KEY].forEach(k =>
+    [TRIAL_SESSION_KEY, TRIAL_ROLE_KEY, TRIAL_CUSTOMERS_KEY, TRIAL_ORDERS_KEY, TRIAL_ACCOUNTS_KEY, TRIAL_FINANCE_TRANS_KEY].forEach(k =>
         sessionStorage.removeItem(k)
     );
+}
+
+export function getTrialFinanceAccounts(): any[] {
+    const raw = sessionStorage.getItem(TRIAL_ACCOUNTS_KEY);
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch { return []; }
+}
+
+export function saveTrialFinanceAccounts(accounts: any[]): void {
+    sessionStorage.setItem(TRIAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
+export function getTrialFinanceTransactions(): any[] {
+    const raw = sessionStorage.getItem(TRIAL_FINANCE_TRANS_KEY);
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch { return []; }
+}
+
+export function saveTrialFinanceTransactions(transactions: any[]): void {
+    sessionStorage.setItem(TRIAL_FINANCE_TRANS_KEY, JSON.stringify(transactions));
 }
 
 export function isActiveTrial(): boolean {

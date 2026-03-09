@@ -253,6 +253,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, company, onUserChange, 
 
     if (isAdmin || isTrial) {
       navItems.push({ path: '/pdv', label: 'Caixa (PDV)', icon: 'fa-cash-register' });
+      navItems.push({ path: '/financeiro', label: 'Financeiro', icon: 'fa-file-invoice-dollar' });
       navItems.push({ path: '/usuarios', label: 'Usuários', icon: 'fa-user-gear' });
       navItems.push({ path: '/configuracoes', label: 'Configurações', icon: 'fa-sliders' });
     }

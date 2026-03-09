@@ -438,6 +438,11 @@ export const dbService: IDatabaseService = {
         const { error } = await supabase.from('service_orders').update(order).eq('id', id);
         if (error) throw error;
     },
+    async updateCustomerCredit(id: string, newBalance: number): Promise<void> {
+        const { error } = await supabase.from('customers').update({ credit_balance: newBalance }).eq('id', id);
+        if (error) throw error;
+    },
+
     async deleteOrder(id: string): Promise<void> {
         const { error } = await supabase.from('service_orders').update({ ativo: false }).eq('id', id);
         if (error) throw error;
@@ -703,48 +708,131 @@ export const dbService: IDatabaseService = {
 
     // Vendas / PDV
     async getVendas(companyId?: string): Promise<any[]> {
-        let query = supabase.from('vendas').select('*, customers(name)');
+        let query = supabase.from('vendas').select('*, customers(name), venda_itens(*)');
         if (companyId) query = query.eq('company_id', companyId);
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
         return data || [];
     },
+
     async getVenda(id: string): Promise<any | null> {
         const { data, error } = await supabase.from('vendas').select('*, venda_itens(*, products(*))').eq('id', id).single();
         if (error) throw error;
         return data;
     },
     async createVenda(venda: any, itens: any[]): Promise<any> {
+        if (venda.company_id === 'trial-company') {
+            const { getTrialOrders, saveTrialOrders, getTrialFinanceTransactions, saveTrialFinanceTransactions, getTrialFinanceAccounts, saveTrialFinanceAccounts } = await import('./trialService');
+
+            const saleId = `trial-sale-${Date.now()}`;
+            const sale = { id: saleId, ...venda, created_at: new Date().toISOString() };
+
+            // 1. Simular Venda (no Trial não temos tabela de vendas separada de orders, mas vamos simular o retorno)
+
+            // 2. Gerar Lançamentos Financeiros (Simulação Trial)
+            const transactions = getTrialFinanceTransactions();
+            const accounts = getTrialFinanceAccounts();
+
+            for (const payment of venda.payment_methods) {
+                const accId = payment.account_id || accounts[0]?.id;
+                const newTrans = {
+                    id: `trial-tr-${Date.now()}-${Math.random()}`,
+                    company_id: venda.company_id,
+                    account_id: accId,
+                    description: `Venda PDV #${saleId.slice(-4)}`,
+                    amount: payment.amount,
+                    type: 'INCOME',
+                    status: 'PAID',
+                    due_date: new Date().toISOString(),
+                    payment_date: new Date().toISOString(),
+                    venda_id: saleId
+                };
+                transactions.push(newTrans);
+
+                // Atualizar Saldo (Emulação do Trigger)
+                const acc = accounts.find(a => a.id === accId);
+                if (acc) acc.current_balance = (Number(acc.current_balance) || 0) + Number(payment.amount);
+            }
+
+            saveTrialFinanceTransactions(transactions);
+            saveTrialFinanceAccounts(accounts);
+            return sale;
+        }
+
         // 1. Criar a Venda
-        const { data: sale, error: saleError } = await supabase.from('vendas').insert(venda).select().single();
-        if (saleError) throw saleError;
+        const insertVenda: any = {
+            company_id: venda.company_id,
+            cliente_id: venda.cliente_id || venda.customer_id || null,
+            total: venda.total,
+            status: venda.status || 'confirmada',
+            subtotal: venda.subtotal !== undefined ? venda.subtotal : venda.total,
+            desconto_total: venda.desconto_total !== undefined ? venda.desconto_total : 0
+        };
+        if (venda.user_id) insertVenda.user_id = venda.user_id;
+        if (venda.ordem_servico_id) insertVenda.ordem_servico_id = venda.ordem_servico_id;
+
+        const { data: sale, error: saleError } = await supabase.from('vendas').insert(insertVenda).select().single();
+        if (saleError) {
+            console.error("ERRO SUPABASE INSERT VENDA:", saleError);
+            throw saleError;
+        }
+
 
         // 2. Criar os Itens
         const itemsToInsert = itens.map(item => ({
             venda_id: sale.id,
-            product_id: item.productId,
+            produto_id: item.produto_id || item.productId,
             quantidade: item.quantidade,
-            preco_unitario: item.precoUnitario,
+            preco_unitario: item.preco_unitario || item.precoUnitario,
             desconto: item.desconto,
-            subtotal: item.subtotal
+            total: item.total || item.subtotal
         }));
 
         const { error: itemsError } = await supabase.from('venda_itens').insert(itemsToInsert);
-        if (itemsError) throw itemsError;
+        if (itemsError) {
+            console.error("ERRO SUPABASE INSERT ITENS:", itemsError, "Payload enviado:", itemsToInsert);
+            throw itemsError;
+        }
 
         // 3. Gerar Movimentações de Estoque (SAIDA)
         for (const item of itens) {
             await this.createStockMovement({
                 company_id: venda.company_id,
-                produto_id: item.productId,
+                produto_id: item.produto_id || item.productId,
                 tipo: 'SAIDA',
                 quantidade: item.quantidade,
-                origem_id: item.origem_id, // Local de onde saiu o produto
+                origem_id: item.origem_id,
                 user_id: venda.user_id,
                 user_name: venda.user_name || 'PDV',
                 observacoes: `Venda PDV #${sale.id.slice(0, 8)}`
             });
         }
+
+        // 4. Gerar Lançamentos Financeiros (Reais)
+        if (venda.payment_methods && Array.isArray(venda.payment_methods)) {
+            for (const payment of venda.payment_methods) {
+                // Atualizar saldo de crédito se for VALE
+                if (payment.mode === 'VALE' && venda.customer_id) {
+                    const { data: cust } = await supabase.from('customers').select('credit_balance').eq('id', venda.customer_id).single();
+                    const newBal = (Number(cust?.credit_balance) || 0) - Number(payment.amount);
+                    await supabase.from('customers').update({ credit_balance: newBal }).eq('id', venda.customer_id);
+                }
+
+                await this.createFinanceTransaction({
+                    company_id: venda.company_id,
+                    account_id: payment.account_id,
+                    description: `Venda PDV #${sale.id.slice(0, 8)}`,
+                    amount: payment.amount,
+                    type: 'INCOME',
+                    status: 'PAID',
+                    due_date: new Date().toISOString(),
+                    payment_date: new Date().toISOString(),
+                    payment_method: payment.mode,
+                    venda_id: sale.id
+                });
+            }
+        }
+
 
         return sale;
     },
@@ -843,5 +931,113 @@ export const dbService: IDatabaseService = {
     async upsertOrders(items: ServiceOrder[]) { await supabase.from('service_orders').upsert(items.map(i => ({ ...i, company_id: i.companyId, customer_id: i.customerId, tech_id: i.techId }))); },
     async upsertMessages(items: ChatMessage[]) { await supabase.from('chat_messages').upsert(items.map(i => ({ ...i, company_id: i.companyId, sender_id: i.senderId }))); },
     async upsertPayments(items: CompanyPayment[]) { await supabase.from('company_payments').upsert(items.map(i => ({ ...i, company_id: i.companyId }))); },
+
+    // Financeiro
+    async getFinanceAccounts(companyId: string): Promise<any[]> {
+        if (companyId === 'trial-company') {
+            const { getTrialFinanceAccounts } = await import('./trialService');
+            return getTrialFinanceAccounts();
+        }
+        const { data, error } = await supabase.from('finance_accounts').select('*').eq('company_id', companyId).eq('active', true).order('name', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+    async createFinanceAccount(account: any): Promise<any> {
+        if (account.company_id === 'trial-company') {
+            const { getTrialFinanceAccounts, saveTrialFinanceAccounts } = await import('./trialService');
+            const accs = getTrialFinanceAccounts();
+            const newAcc = { id: `trial-acc-${Date.now()}`, ...account, current_balance: Number(account.initial_balance) || 0 };
+            accs.push(newAcc);
+            saveTrialFinanceAccounts(accs);
+            return newAcc;
+        }
+        const { data, error } = await supabase.from('finance_accounts').insert(account).select().single();
+        if (error) throw error;
+        return data;
+    },
+    async updateFinanceAccount(id: string, account: any): Promise<void> {
+        if (id.startsWith('trial-')) {
+            const { getTrialFinanceAccounts, saveTrialFinanceAccounts } = await import('./trialService');
+            const accs = getTrialFinanceAccounts();
+            const idx = accs.findIndex(a => a.id === id);
+            if (idx !== -1) {
+                accs[idx] = { ...accs[idx], ...account };
+                saveTrialFinanceAccounts(accs);
+            }
+            return;
+        }
+        const { error } = await supabase.from('finance_accounts').update(account).eq('id', id);
+        if (error) throw error;
+    },
+    async getFinanceCategories(companyId: string, type?: 'INCOME' | 'EXPENSE'): Promise<any[]> {
+        let query = supabase.from('finance_categories').select('*').eq('company_id', companyId);
+        if (type) query = query.eq('type', type);
+        const { data, error } = await query.order('name', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+    async createFinanceCategory(category: any): Promise<any> {
+        const { data, error } = await supabase.from('finance_categories').insert(category).select().single();
+        if (error) throw error;
+        return data;
+    },
+    async getFinanceTransactions(companyId: string, _filters?: any): Promise<any[]> {
+        if (companyId === 'trial-company') {
+            const { getTrialFinanceTransactions, getTrialFinanceAccounts } = await import('./trialService');
+            const trans = getTrialFinanceTransactions();
+            const accs = getTrialFinanceAccounts();
+            return trans.map(t => ({
+                ...t,
+                account: { name: accs.find(a => a.id === t.account_id)?.name || 'Conta Trial' },
+                category: { name: 'Geral' }
+            }));
+        }
+        const { data, error } = await supabase.from('finance_transactions').select(`
+            *,
+            account:finance_accounts(name),
+            category:finance_categories(name)
+        `).eq('company_id', companyId).order('due_date', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+    async createFinanceTransaction(transaction: any): Promise<any> {
+        if (transaction.company_id === 'trial-company') {
+            const { getTrialFinanceTransactions, saveTrialFinanceTransactions, getTrialFinanceAccounts, saveTrialFinanceAccounts } = await import('./trialService');
+            const trans = getTrialFinanceTransactions();
+            const newTr = { id: `trial-tr-${Date.now()}`, ...transaction };
+            trans.push(newTr);
+            saveTrialFinanceTransactions(trans);
+
+            // Emulação do Trigger de saldo no Trial
+            if (newTr.status === 'PAID') {
+                const accs = getTrialFinanceAccounts();
+                const idx = accs.findIndex(a => a.id === newTr.account_id);
+                if (idx !== -1) {
+                    if (newTr.type === 'INCOME') accs[idx].current_balance += Number(newTr.amount);
+                    else accs[idx].current_balance -= Number(newTr.amount);
+                    saveTrialFinanceAccounts(accs);
+                }
+            }
+            return newTr;
+        }
+        const { data, error } = await supabase.from('finance_transactions').insert(transaction).select().single();
+        if (error) throw error;
+        return data;
+    },
+    async updateFinanceTransaction(id: string, transaction: any): Promise<void> {
+        if (id.startsWith('trial-')) {
+            const { getTrialFinanceTransactions, saveTrialFinanceTransactions } = await import('./trialService');
+            const trans = getTrialFinanceTransactions();
+            const idx = trans.findIndex(t => t.id === id);
+            if (idx !== -1) {
+                trans[idx] = { ...trans[idx], ...transaction };
+                saveTrialFinanceTransactions(trans);
+            }
+            return;
+        }
+        const { error } = await supabase.from('finance_transactions').update(transaction).eq('id', id);
+        if (error) throw error;
+    },
+
     supabase
 };
